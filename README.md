@@ -1,4 +1,4 @@
-# KingPanaZilla Suite — NinjaTrader 8
+# GodZilla Suite — NinjaTrader 8
 
 **Namespace:** `NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla`
 
@@ -9,16 +9,16 @@ A NinjaTrader 8 trading system built around six specialized signal indicators un
 ## Components
 
 ### GodZillaKilla — ATM Trading Strategy
-*Current version: 1.6.5*
+*Current version: 1.6.6*
 
-Automated NinjaTrader 8 strategy that reads signals from all six KingPanaZilla sub-indicators and executes ATM or Fixed-Ticks trades based on configurable confluence rules. Includes session filters, EMA filter, news filter, daily PnL limits, martingale recovery, and a full SharpDX dashboard.
+Automated NinjaTrader 8 strategy that reads signals from all six GodZilla Suite sub-indicators and executes ATM or Fixed-Ticks trades based on configurable confluence rules. Includes session filters, EMA filter, news filter, daily PnL limits, martingale recovery, and a full SharpDX dashboard.
 
 → [GodZillaKilla.md](documents/GodZillaKilla.md)
 
 ---
 
 ### GodZuki — Signal Indicator
-*Current version: 1.0.1*
+*Current version: 1.0.3*
 
 Pure signal indicator version of GodZillaKilla. No trading — add GodZuki to any chart to visualize the same confluence signals, trigger audio alerts, log signal history to CSV, and expose all signal values in the NT8 Data Box. Signal Set 1 and Set 2 draw independently on the same bar. Useful for monitoring, backtesting signal quality, and driving custom strategies via public `Series<double>` outputs.
 
@@ -26,7 +26,7 @@ Pure signal indicator version of GodZillaKilla. No trading — add GodZuki to an
 
 ---
 
-### KingPanaZilla Indicators — Signal Engine
+### GodZilla Indicators — Signal Engine
 *Six sub-indicators powering both GodZillaKilla and GodZuki*
 
 | Indicator | Short Name | What it detects |
@@ -56,12 +56,13 @@ All six expose a `Signal_Trade` series using a consistent **−1 / 0 / +1** (or 
 
 | File | Purpose |
 |---|---|
-| `GodZillaKilla.cs` | ATM trading strategy (v1.6.5) |
-| `GodZuki.cs` | Signal visualization indicator (v1.0.1) |
+| `GodZillaKilla.cs` | ATM trading strategy (v1.6.6) |
+| `GodZuki.cs` | Signal visualization indicator (v1.0.3) |
 | `gbKingOrderBlock.cs` | KO sub-indicator |
 | `gbPANAKanal.cs` | PA sub-indicator |
 | `gbThunderZilla.cs` | TH sub-indicator |
 | `gbSuperJumpBoost.cs` | SJ sub-indicator |
 | `gbSumoPullback.cs` | SU sub-indicator |
 | `gbNobleCloud.cs` | NC sub-indicator |
-| `gbKingPanaZilla.cs` | Composite meta-indicator (KO+PA+TH) |
+| `gbBarStatus.cs` | Bar status utility indicator |
+| `NewsSignals.cs` | Economic calendar signal source |

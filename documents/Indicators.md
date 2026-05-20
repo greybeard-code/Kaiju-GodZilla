@@ -1,4 +1,4 @@
-# KingPanaZilla Indicators — Technical Reference
+# GodZilla Indicators — Technical Reference
 
 All six indicators share a common namespace (`NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla`), a consistent `Signal_Trade` series contract, and are consumed directly by GodZillaKilla and GodZuki via their factory methods at `State.DataLoaded`.
 
@@ -256,4 +256,4 @@ Optional CSV logging to `gbKPZlog_YYYYMMDD_HHmmss.csv` with columns: `DateTime, 
 
 ---
 
-← [README.md](README.md)
+← [README.md](../README.md)

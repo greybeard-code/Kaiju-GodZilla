@@ -1,11 +1,11 @@
 # GodZillaKilla — ATM Trading Strategy
 
-**Version:** 1.6.5
+**Version:** 1.6.6
 **Namespace:** `NinjaTrader.NinjaScript.Strategies.Playr101`
 **Author:** Playr101
 **Credits:** GreyBeard, ninZa.co, RenkoKings, ES, rbro999
 
-GodZillaKilla is a NinjaTrader 8 strategy that reads signals from the six KingPanaZilla sub-indicators and executes trades using either NT8 ATM templates or strategy-managed Fixed-Ticks orders. It is designed for live and replay trading on any chart type.
+GodZillaKilla is a NinjaTrader 8 strategy that reads signals from the six GodZilla Suite sub-indicators and executes trades using either NT8 ATM templates or strategy-managed Fixed-Ticks orders. It is designed for live and replay trading on any chart type.
 
 ---
 
@@ -13,7 +13,8 @@ GodZillaKilla is a NinjaTrader 8 strategy that reads signals from the six KingPa
 
 | Version | Summary |
 |---|---|
-| **1.6.5** | Fixed CategoryOrder collision (Display/NobleCloud both at 12). Fixed CSV log header to match 14-column output. Fixed martingale close path to use `WriteTradeLogRecord`. Applied Defense #8 `WriteTradeLogRecord` patches to both normal ATM and martingale ATM stale-ID paths. |
+| **1.6.6** | NobleCloud integration as 6th signal source (Set 1 and Set 2). OnOrderUpdate rejection handling for FixedTicks mode. RealtimeErrorHandling changed to StopCancelClose. IsExitOnSessionCloseStrategy set to false. Defense #3/#8 extended to martingale ATM path. WPF button click handler unsubscribe on disable (defense #5). _tradeMap upgraded to ConcurrentDictionary. FixedTicks PnL baseline for fresh-start accuracy. SafeSignalRead applied to all six signals. Indicator null diagnostic. Open PnL HUD row conditional on UseUnrealizedPnl. Entry/Exit labels anchor to bar High/Low. Confluence stats replace per-group stats. CSV log expanded to 14 columns. Properties panel: PA expanded to PanaKanal, NC expanded to NobleCloud. UseNCSignals defaults to true. |
+| 1.6.5 | Fixed CategoryOrder collision (Display/NobleCloud both at 12). Fixed CSV log header to match 14-column output. Fixed martingale close path to use `WriteTradeLogRecord`. Applied Defense #8 `WriteTradeLogRecord` patches to both normal ATM and martingale ATM stale-ID paths. |
 | 1.6.4 | Internal bump by Playr101. |
 | 1.6.3 | Added NobleCloud (NC) as sixth signal indicator. Defense #8 mid-trade staleness detection. |
 
@@ -36,7 +37,7 @@ Strategy-managed entries with configurable quantity, stop-loss ticks, and profit
 ## Signal System
 
 ### Sub-Indicators
-GodZillaKilla instantiates all six KPZ sub-indicators at `State.DataLoaded`. Each exposes a `Signal_Trade` series; the strategy reads `Signal_Trade[0]` every bar close.
+GodZillaKilla instantiates all six GodZilla Suite sub-indicators at `State.DataLoaded`. Each exposes a `Signal_Trade` series; the strategy reads `Signal_Trade[0]` every bar close.
 
 ### Signal Configuration
 Each indicator has independent Long and Short threshold values and comparison operators (`Equal`, `GreaterOrEqual`, `GreaterThan`, `LessOrEqual`, `LessThan`, `NotEqual`).
@@ -108,7 +109,7 @@ The SharpDX overlay panel shows:
 - Master arm status (ENABLED / DISABLED) with L / S / REV sub-status
 - Session status (IN SESSION / OUT OF SESSION)
 - News filter status (if enabled)
-- Strategy PnL, Daily PnL, Open PnL
+- Strategy PnL, Daily PnL, Open PnL (Open PnL row visible only when Use Unrealized PnL is enabled)
 - Risk target and loss limit settings
 - Current trade status (IDLE / IN POSITION)
 - Last trade summary with PnL
@@ -123,7 +124,7 @@ Size: `Tiny` / `Small` / `Normal` / `Large` / `Huge`.
 
 An on-chart WPF button panel (ARM LONG / ARM SHORT / REV / AUTO / CLOSE) allows realtime manual control of:
 - Arming long and/or short entries independently
-- Toggling auto-arm (enables/disables all automated entries)
+- Toggling auto-arm (enables/disables all automated entries and clears L/S/REV state on disable)
 - Toggling reverse-on-opposite-signal behaviour
 - Immediately flattening all positions and cancelling orders
 
@@ -165,4 +166,4 @@ One row is written per closed trade. Defense #8 forced-close events also write a
 
 ---
 
-← [README.md](README.md)
+← [README.md](../README.md)

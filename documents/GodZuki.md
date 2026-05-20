@@ -1,9 +1,9 @@
 # GodZuki — Signal Indicator
 
-**Version:** 1.0.1
+**Version:** 1.0.3
 **Namespace:** `NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla`
 
-GodZuki is the pure indicator version of GodZillaKilla. It reads the same six KingPanaZilla sub-indicators, evaluates the same confluence logic, applies the same EMA filter — but executes no trades. Use it to visually monitor signals on any chart, audit historical signal quality, trigger audio alerts, and log signal history to CSV.
+GodZuki is the pure indicator version of GodZillaKilla. It reads the same six GodZilla Suite sub-indicators, evaluates the same confluence logic, applies the same EMA filter — but executes no trades. Use it to visually monitor signals on any chart, audit historical signal quality, trigger audio alerts, and log signal history to CSV.
 
 ---
 
@@ -11,7 +11,9 @@ GodZuki is the pure indicator version of GodZillaKilla. It reads the same six Ki
 
 | Version | Summary |
 |---|---|
-| **1.0.1** | Fixed nested enum compile errors — `GodZukiSignalOperator`, `GodZukiHudCorner`, `GodZukiHudSize` moved to namespace level. Set 1 and Set 2 now draw independently on the same bar. Set 2 arrow offset increased (22 ticks vs Set 1 at 12 ticks). Group arrow labels changed from numeric suffix to `-S1` / `-S2`. |
+| **1.0.3** | Indicator null diagnostic — one-time print at realtime with per-indicator load status. Signal reads hardened: outer null guards removed in favor of unified SafeSignalRead error handling across all six signals. |
+| 1.0.2 | Audio alert sound file properties now use NT8 file picker (browse for .wav). |
+| 1.0.1 | Fixed nested enum compile errors — `GodZukiSignalOperator`, `GodZukiHudCorner`, `GodZukiHudSize` moved to namespace level. Set 1 and Set 2 now draw independently on the same bar. Set 2 arrow offset increased (22 ticks vs Set 1 at 12 ticks). Group arrow labels changed from numeric suffix to `-S1` / `-S2`. |
 | 1.0.0 | Initial release. |
 
 ---
@@ -83,7 +85,7 @@ When either Set 1 or Set 2 fires, the bar background is highlighted with a confi
 The SharpDX overlay panel shows four fixed rows:
 
 ```
-GodZuki  v1.0.1
+GodZuki  v1.0.3
 ─────────────────────────────────────
 EMA: ON   21=19843.50 / 50=19856.25    ← green=bullish, red=bearish, dim=off
 Set1: ON   Req:2/3                      ← white=active, dim=off
@@ -161,7 +163,7 @@ When `EnableSignalAudioAlerts = true`:
 - **Individual alerts** — fires when a single sub-indicator signal passes the EMA filter, deduped to once per bar per direction per indicator
 - **Group alerts** — fires independently for Set 1 and Set 2; both can alert on the same bar
 
-Both have independent WAV file selection. Deduplication uses a `CurrentBar:DIRECTION` stamp per alert key.
+Both have independent WAV file selection via the NT8 file picker. Deduplication uses a `CurrentBar:DIRECTION` stamp per alert key.
 
 ---
 
@@ -216,14 +218,14 @@ See [Indicators.md](Indicators.md) for full parameter documentation.
 
 ## Compile Notes
 
-The following types are defined at **namespace level** (not nested inside the class) to avoid type resolution errors when compiled alongside other KingPanaZilla indicators:
+The following types are defined at **namespace level** (not nested inside the class) to avoid type resolution errors when compiled alongside other GodZilla Suite indicators:
 
 - `GodZukiSignalOperator` — comparison operator enum for signal thresholds
 - `GodZukiHudCorner` — HUD position enum
 - `GodZukiHudSize` — HUD size enum
 
-GodZuki has **no dependency on GodZillaKilla**. It requires only the six KPZ sub-indicators (`gbKingOrderBlock`, `gbPANAKanal`, `gbThunderZilla`, `gbSuperJumpBoost`, `gbSumoPullback`, `gbNobleCloud`) and standard NT8/SharpDX framework types.
+GodZuki has **no dependency on GodZillaKilla**. It requires only the six GodZilla Suite sub-indicators (`gbKingOrderBlock`, `gbPANAKanal`, `gbThunderZilla`, `gbSuperJumpBoost`, `gbSumoPullback`, `gbNobleCloud`) and standard NT8/SharpDX framework types.
 
 ---
 
-← [README.md](README.md)
+← [README.md](../README.md)
