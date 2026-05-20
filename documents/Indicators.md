@@ -240,20 +240,4 @@ All six indicators share:
 
 ---
 
-## gbKingPanaZilla — Composite Meta-Indicator
-
-A convenience indicator that loads gbKingOrderBlock, gbPANAKanal, and gbThunderZilla and cross-combines their signals into three unified outputs:
-
-| Plot | Long condition | Short condition |
-|---|---|---|
-| PanaZilla_Trade | PA ≥ 2 AND TH ≥ 3 | PA ≤ −2 AND TH ≤ −3 |
-| KingZilla_Trade | TH ≥ 3 AND KO ≥ 1 | TH ≤ −3 AND KO ≤ −1 |
-| KingPana_Trade | PA ≥ 2 AND KO ≥ 1 | PA ≤ −2 AND KO ≤ −1 |
-
-Thresholds capture highest-conviction sub-signals: PA ≥ 2 = Break or Pullback; TH ≥ 3 = Sumo Pullback; KO ≥ 1 = any Return or Breakout.
-
-Optional CSV logging to `gbKPZlog_YYYYMMDD_HHmmss.csv` with columns: `DateTime, Instrument, Price, PanaZillia_Trade, KingZilla_Trade, KingPana_Trade`.
-
----
-
 ← [README.md](../README.md)
