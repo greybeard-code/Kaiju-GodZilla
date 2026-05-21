@@ -49,9 +49,11 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
     [CategoryOrder ("Indicator: SuperJumpBoost", 10)]
     [CategoryOrder ("Indicator: SumoPullback", 11)]
     [CategoryOrder ("Indicator: NobleCloud", 12)]
-    [CategoryOrder ("Display", 13)]
-    [CategoryOrder ("Audio Alerts", 14)]
-    [CategoryOrder ("Logging", 15)]
+    [CategoryOrder ("Dashboard Display", 13)]
+    [CategoryOrder ("Indicator Display", 14)]
+    [CategoryOrder ("ATM Marker Display", 15)]
+    [CategoryOrder ("Audio Alerts", 16)]
+    [CategoryOrder ("Logging", 17)]
     #endregion
 
     public class GodZillaKilla : Strategy, ICustomTypeDescriptor
@@ -316,6 +318,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         private gbSumoPullback _sumo;
         private gbNobleCloud                    _nc;
         private gbSuperJumpBoost _sjb;
+        private gbBarStatus _barStatus;
 
         // Normalized signal series used by entries, tracking, and visuals
         private Series<double> _koSignalSeries;
@@ -448,12 +451,17 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 Description = "GodZillaKilla — strategy using direct KingOrderBlock/PANAKanal/ThunderZilla/SuperJumpBoost/SumoPullback/NobleCloud child indicator signals.";
                 Name = "GodZillaKilla";
                 StrategyName = Name;
-                _strategyVersion = "1.6.6";
+                _strategyVersion = "1.6.9";
 
                 Author = "Playr101";
                 Credits = "GreyBeard, ninZa.co, RenkoKings, ES, rbro999";
 
-                IsExitOnSessionCloseStrategy = false;
+                // NT8's session-close auto-exit is kept ON as a backstop. The strategy's
+                // own TF/daily-limit FlattenEverything paths usually flatten earlier; if
+                // any of those gates miss (strategy disabled mid-day, TF3 EndTime3 set
+                // away from session close, etc.) NT8 will still flatten at session end
+                // and not carry a position overnight.
+                IsExitOnSessionCloseStrategy = true;
                 ExitOnSessionCloseSeconds = 30;
                 IsFillLimitOnTouch = true;
                 MaximumBarsLookBack = MaximumBarsLookBack.TwoHundredFiftySix;
@@ -518,7 +526,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 UseSUSignals = false;
                 SU_LongValue = 1;
                 SU_ShortValue = -1;
-                UseNCSignals = true;
+                UseNCSignals = false;
                 NC_LongOperator = SignalComparisonOperator.Equal;
                 NC_LongValue = 1;
                 NC_ShortOperator = SignalComparisonOperator.Equal;
@@ -781,6 +789,9 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
 
 
+                // Optional visual-only bar status indicator.
+                ShowBarStatusIndicator = true;
+
                 // Trade Markers - ATM mode only
                 ShowEntryExitMarkers = true;
                 EntryExitLongColor = Brushes.SteelBlue;
@@ -897,6 +908,13 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 if (UseSJSignals && ShowSJIndicator)
                     AddChartIndicator (_sjb);
                 _sjb.Name = "";
+
+                if (ShowBarStatusIndicator)
+                {
+                    _barStatus = gbBarStatus (0);
+                    AddChartIndicator (_barStatus);
+                    _barStatus.Name = "";
+                }
 
                 _koSignalSeries = new Series<double> (this);
                 _paSignalSeries = new Series<double> (this);
@@ -1491,9 +1509,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
             bool isProtectiveOrder =
                 orderName.IndexOf ("Stop loss", StringComparison.OrdinalIgnoreCase) >= 0
-                || orderName.IndexOf ("Profit target", StringComparison.OrdinalIgnoreCase) >= 0
-                || orderName.IndexOf ("Stop", StringComparison.OrdinalIgnoreCase) >= 0
-                || orderName.IndexOf ("Target", StringComparison.OrdinalIgnoreCase) >= 0;
+                || orderName.IndexOf ("Profit target", StringComparison.OrdinalIgnoreCase) >= 0;
 
             if (orderState == OrderState.Rejected)
             {
@@ -2755,7 +2771,40 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
                 float ROW_H   = HudRowHeight();
                 float TITLE_H = HudTitleHeight();
-                float BOX_W   = HudBoxWidth();
+
+                // Dynamic width: the old HUD used a fixed width from HudBoxWidth().
+                // Long Group/Confluence rows such as SET1-G6-KO+PA+TH+SJ+SU+NC
+                // can exceed that width, and DrawTextOptions.Clip cuts off the
+                // right side. Measure the actual snapshot strings and widen the
+                // dashboard enough to show the full text.
+                float BASE_BOX_W = HudBoxWidth();
+                float contentW = Math.Max (10f, BASE_BOX_W - PAD * 2f);
+                float textPadW = 14f;
+
+                contentW = Math.Max (contentW, MeasureHudTextWidth ("🐲 " + title + (string.IsNullOrEmpty (version) ? "" : "  v" + version), _dashTitleFormat) + textPadW);
+                contentW = Math.Max (contentW, MeasureHudTextWidth (masterActive ? "ENABLED     L: ON     S: ON     REV: ON" : arm, _dashFormat) + textPadW);
+                contentW = Math.Max (contentW, MeasureHudTextWidth ("Session: " + sess, _dashFormat) + textPadW);
+
+                if (showNews && !string.IsNullOrEmpty (news))
+                    contentW = Math.Max (contentW, MeasureHudTextWidth (news, _dashFormat) + textPadW);
+
+                contentW = Math.Max (contentW, MeasureHudTextWidth (strategyPnl, _dashFormat) + textPadW);
+                contentW = Math.Max (contentW, MeasureHudTextWidth (dailyPnl, _dashFormat) + textPadW);
+
+                if (showOpenPnl)
+                    contentW = Math.Max (contentW, MeasureHudTextWidth (pnlOpen, _dashFormat) + textPadW);
+
+                contentW = Math.Max (contentW, MeasureHudTextWidth (targets, _dashFormat) + textPadW);
+                contentW = Math.Max (contentW, MeasureHudTextWidth (status, _dashFormat) + textPadW);
+                contentW = Math.Max (contentW, MeasureHudTextWidth (last, _dashFormat) + textPadW);
+
+                if (showSignals && sigLines != null)
+                {
+                    foreach (string sigLineMeasure in sigLines)
+                        contentW = Math.Max (contentW, MeasureHudTextWidth (sigLineMeasure, _dashFormat) + textPadW);
+                }
+
+                float BOX_W = contentW + PAD * 2f;
 
                 // Count rows for box sizing
                 int rows = 0;
@@ -2804,6 +2853,16 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                         by = rtSize.Height - boxH - MARGIN_Y;
                         break;
                 }
+
+                // Keep the widened box visible where possible.
+                if (bx < MARGIN_X)
+                    bx = MARGIN_X;
+
+                if (bx + BOX_W > rtSize.Width - 2f)
+                    bx = Math.Max (2f, rtSize.Width - BOX_W - RIGHT_AXIS_PAD);
+
+                if (by < 2f)
+                    by = 2f;
 
                 RectangleF box = new RectangleF(bx, by, BOX_W, boxH);
                 RenderTarget.FillRectangle (box, _bBackground);
@@ -2908,6 +2967,29 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     if (EnableDebug)
                         Print ("[" + Name + "] HUD render err: " + ex.Message);
                 }
+            }
+        }
+
+        private float MeasureHudTextWidth (string text, SharpDX.DirectWrite.TextFormat format)
+        {
+            if (format == null)
+                return 0f;
+
+            try
+            {
+                using (SharpDX.DirectWrite.TextLayout layout = new SharpDX.DirectWrite.TextLayout (
+                    NinjaTrader.Core.Globals.DirectWriteFactory,
+                    text ?? string.Empty,
+                    format,
+                    10000f,
+                    1000f))
+                {
+                    return layout.Metrics.WidthIncludingTrailingWhitespace;
+                }
+            }
+            catch
+            {
+                return 0f;
             }
         }
 
@@ -5041,13 +5123,19 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 if (Account == null || Instrument == null)
                     return null;
 
-                foreach (NinjaTrader.Cbi.Position p in Account.Positions)
+                // Account.Positions can be mutated from NT8 background threads while
+                // OnOrderUpdate iterates here. Snapshot the match under lock — mirrors
+                // the pattern used in IsAtmMidTradeStale().
+                lock (Account.Positions)
                 {
-                    if (p == null || p.Instrument == null)
-                        continue;
+                    foreach (NinjaTrader.Cbi.Position p in Account.Positions)
+                    {
+                        if (p == null || p.Instrument == null)
+                            continue;
 
-                    if (p.Instrument.FullName == Instrument.FullName)
-                        return p;
+                        if (p.Instrument.FullName == Instrument.FullName)
+                            return p;
+                    }
                 }
             }
             catch { }
@@ -6650,11 +6738,10 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 _armLong = true;
                 _armShort = true;
                 _reverseOnAlternateSignal = true;
-                // Optional: you could force REV on here if desired, 
-                // but usually, it's safer to let the user toggle it back.
             }
             else
             {
+                // Symmetric master kill-switch: disarm long, short, AND reverse together.
                 _armLong = false;
                 _armShort = false;
                 _reverseOnAlternateSignal = false;
@@ -6969,7 +7056,8 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     "ShowNCSignalArrows",
                     "ShowNCSignalArrowLabels",
                     "NCSignalArrowText",
-                    "NCSignalArrowBrush");
+                    "NCSignalArrowBrush",
+                    "NC_Brush");
             }
             else
             {
@@ -7074,8 +7162,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     "NC_SignalSplit",
                     "NC_FilterEnabled",
                     "NC_FilterBarMin",
-                    "NC_FilterBarMax",
-                    "NC_Brush");
+                    "NC_FilterBarMax");
 
             if (!ShowIndicatorSettings)
                 RemoveProperties (col);
@@ -9172,9 +9259,9 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             get; set;
         }
 
-        // ==================== Display ====================
+        // ==================== Dashboard Display ====================
         [NinjaScriptProperty]
-        [Display (Name = "Show Dashboard", Order = 0, GroupName = "Display",
+        [Display (Name = "Show Dashboard", Order = 0, GroupName = "Dashboard Display",
             Description = "Show the SharpDX info panel (PnL/session/status). Turn off for stability mode — disables all dashboard rendering and dispatcher invalidate work.")]
         public bool ShowDashboard
         {
@@ -9182,7 +9269,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Dashboard Position", Order = 1, GroupName = "Display",
+        [Display (Name = "Dashboard Position", Order = 1, GroupName = "Dashboard Display",
             Description = "Where to anchor the SharpDX info panel on the chart. Hidden = same as Show Dashboard = false.")]
         public HudCorner DashboardPosition
         {
@@ -9190,7 +9277,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Dashboard Size", Order = 2, GroupName = "Display",
+        [Display (Name = "Dashboard Size", Order = 2, GroupName = "Dashboard Display",
             Description = "Tiny / Small / Normal / Large / Huge. Changes apply on the next frame.")]
         public GodZillaHudSize DashboardSize
         {
@@ -9198,7 +9285,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Show Control Panel", Order = 3, GroupName = "Display",
+        [Display (Name = "Show Control Panel", Order = 3, GroupName = "Dashboard Display",
             Description = "Show the WPF arm/auto-arm/close-all button panel.")]
         public bool ShowControlPanel
         {
@@ -9206,7 +9293,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Control Panel Position", Order = 4, GroupName = "Display",
+        [Display (Name = "Control Panel Position", Order = 4, GroupName = "Dashboard Display",
             Description = "Where to anchor the button panel on the chart.")]
         public HudCorner ControlPanelPosition
         {
@@ -9214,7 +9301,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Show Individual Signal Stats", Order = 5, GroupName = "Display",
+        [Display (Name = "Show Individual Signal Stats", Order = 5, GroupName = "Dashboard Display",
             Description = "When enabled, displays individual tracking (T/Lg/Sh/W/L) for each indicator on the dashboard.")]
         public bool ShowIndividualSignalStats
         {
@@ -9222,16 +9309,28 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Show Group Signal Stats", Order = 6, GroupName = "Display",
+        [Display (Name = "Show Group Signal Stats", Order = 6, GroupName = "Dashboard Display",
             Description = "When enabled, displays the confluence/group signal tracking (T/Lg/Sh/W/L) on the dashboard.")]
         public bool ShowGroupSignalTrackingStats
         {
             get; set;
         }
 
-        // -------------------- Display: KingOrderBlock --------------------
+        // ==================== Indicator Display ====================
+        // -------------------- Indicator Display: BarStatus --------------------
         [NinjaScriptProperty]
-        [Display (Name = "KingOrderBlock: Show Indicator", Order = 7, GroupName = "Display")]
+        [Display (Name = "BarStatus: Show Indicator", Order = 0, GroupName = "Indicator Display",
+            Description = "Visual only. Adds the BarStatus indicator to the chart. It is not used for entries, exits, filters, tracking, or PnL.")]
+        [RefreshProperties (RefreshProperties.All)]
+        public bool ShowBarStatusIndicator
+        {
+            get; set;
+        }
+
+
+        // -------------------- Indicator Display: KingOrderBlock --------------------
+        [NinjaScriptProperty]
+        [Display (Name = "KingOrderBlock: Show Indicator", Order = 10, GroupName = "Indicator Display")]
         [RefreshProperties (RefreshProperties.All)]
         public bool ShowKOIndicator
         {
@@ -9239,7 +9338,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "KingOrderBlock: Show Signal Arrows", Order = 8, GroupName = "Display")]
+        [Display (Name = "KingOrderBlock: Show Signal Arrows", Order = 11, GroupName = "Indicator Display")]
         [RefreshProperties (RefreshProperties.All)]
         public bool ShowKOSignalArrows
         {
@@ -9247,7 +9346,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "KingOrderBlock: Show Signal Arrow Label", Order = 9, GroupName = "Display")]
+        [Display (Name = "KingOrderBlock: Show Signal Arrow Label", Order = 12, GroupName = "Indicator Display")]
         [RefreshProperties (RefreshProperties.All)]
         public bool ShowKOSignalArrowLabels
         {
@@ -9255,14 +9354,14 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "KingOrderBlock: Signal Arrow Text", Order = 10, GroupName = "Display")]
+        [Display (Name = "KingOrderBlock: Signal Arrow Text", Order = 13, GroupName = "Indicator Display")]
         public string KOSignalArrowText
         {
             get; set;
         }
 
         [XmlIgnore]
-        [Display (Name = "KingOrderBlock: Indicator Color", Order = 11, GroupName = "Display")]
+        [Display (Name = "KingOrderBlock: Indicator Color", Order = 14, GroupName = "Indicator Display")]
         public Brush KO_Brush
         {
             get; set;
@@ -9282,7 +9381,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [XmlIgnore]
-        [Display (Name = "KingOrderBlock: Signal Arrow Color", Order = 12, GroupName = "Display")]
+        [Display (Name = "KingOrderBlock: Signal Arrow Color", Order = 15, GroupName = "Indicator Display")]
         public Brush KOSignalArrowBrush
         {
             get; set;
@@ -9301,9 +9400,9 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             }
         }
 
-        // -------------------- Display: PA --------------------
+        // -------------------- Indicator Display: PANAKanal --------------------
         [NinjaScriptProperty]
-        [Display (Name = "PanaKanal: Show Indicator", Order = 13, GroupName = "Display")]
+        [Display (Name = "PANAKanal: Show Indicator", Order = 20, GroupName = "Indicator Display")]
         [RefreshProperties (RefreshProperties.All)]
         public bool ShowPAIndicator
         {
@@ -9311,7 +9410,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "PanaKanal: Show Signal Arrows", Order = 14, GroupName = "Display")]
+        [Display (Name = "PANAKanal: Show Signal Arrows", Order = 21, GroupName = "Indicator Display")]
         [RefreshProperties (RefreshProperties.All)]
         public bool ShowPASignalArrows
         {
@@ -9319,7 +9418,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "PanaKanal: Show Signal Arrow Label", Order = 15, GroupName = "Display")]
+        [Display (Name = "PANAKanal: Show Signal Arrow Label", Order = 22, GroupName = "Indicator Display")]
         [RefreshProperties (RefreshProperties.All)]
         public bool ShowPASignalArrowLabels
         {
@@ -9327,14 +9426,14 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "PanaKanal: Signal Arrow Text", Order = 16, GroupName = "Display")]
+        [Display (Name = "PANAKanal: Signal Arrow Text", Order = 23, GroupName = "Indicator Display")]
         public string PASignalArrowText
         {
             get; set;
         }
 
         [XmlIgnore]
-        [Display (Name = "PanaKanal: Indicator Color", Order = 17, GroupName = "Display")]
+        [Display (Name = "PANAKanal: Indicator Color", Order = 24, GroupName = "Indicator Display")]
         public Brush PA_Brush
         {
             get; set;
@@ -9354,7 +9453,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [XmlIgnore]
-        [Display (Name = "PanaKanal: Signal Arrow Color", Order = 18, GroupName = "Display")]
+        [Display (Name = "PANAKanal: Signal Arrow Color", Order = 25, GroupName = "Indicator Display")]
         public Brush PASignalArrowBrush
         {
             get; set;
@@ -9373,9 +9472,9 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             }
         }
 
-        // -------------------- Display: ThunderZilla --------------------
+        // -------------------- Indicator Display: ThunderZilla --------------------
         [NinjaScriptProperty]
-        [Display (Name = "ThunderZilla: Show Indicator", Order = 19, GroupName = "Display")]
+        [Display (Name = "ThunderZilla: Show Indicator", Order = 30, GroupName = "Indicator Display")]
         [RefreshProperties (RefreshProperties.All)]
         public bool ShowTHIndicator
         {
@@ -9383,7 +9482,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "ThunderZilla: Show Signal Arrows", Order = 20, GroupName = "Display")]
+        [Display (Name = "ThunderZilla: Show Signal Arrows", Order = 31, GroupName = "Indicator Display")]
         [RefreshProperties (RefreshProperties.All)]
         public bool ShowTHSignalArrows
         {
@@ -9391,7 +9490,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "ThunderZilla: Show Signal Arrow Label", Order = 21, GroupName = "Display")]
+        [Display (Name = "ThunderZilla: Show Signal Arrow Label", Order = 32, GroupName = "Indicator Display")]
         [RefreshProperties (RefreshProperties.All)]
         public bool ShowTHSignalArrowLabels
         {
@@ -9399,14 +9498,14 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "ThunderZilla: Signal Arrow Text", Order = 22, GroupName = "Display")]
+        [Display (Name = "ThunderZilla: Signal Arrow Text", Order = 33, GroupName = "Indicator Display")]
         public string THSignalArrowText
         {
             get; set;
         }
 
         [XmlIgnore]
-        [Display (Name = "ThunderZilla: Indicator Color", Order = 23, GroupName = "Display")]
+        [Display (Name = "ThunderZilla: Indicator Color", Order = 34, GroupName = "Indicator Display")]
         public Brush TH_Brush
         {
             get; set;
@@ -9426,7 +9525,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [XmlIgnore]
-        [Display (Name = "ThunderZilla: Signal Arrow Color", Order = 24, GroupName = "Display")]
+        [Display (Name = "ThunderZilla: Signal Arrow Color", Order = 35, GroupName = "Indicator Display")]
         public Brush THSignalArrowBrush
         {
             get; set;
@@ -9445,9 +9544,9 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             }
         }
 
-        // -------------------- Display: SuperJumpBoost --------------------
+        // -------------------- Indicator Display: SuperJumpBoost --------------------
         [NinjaScriptProperty]
-        [Display (Name = "SuperJumpBoost: Show Indicator", Order = 25, GroupName = "Display")]
+        [Display (Name = "SuperJumpBoost: Show Indicator", Order = 40, GroupName = "Indicator Display")]
         [RefreshProperties (RefreshProperties.All)]
         public bool ShowSJIndicator
         {
@@ -9455,7 +9554,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "SuperJumpBoost: Show Signal Arrows", Order = 26, GroupName = "Display")]
+        [Display (Name = "SuperJumpBoost: Show Signal Arrows", Order = 41, GroupName = "Indicator Display")]
         [RefreshProperties (RefreshProperties.All)]
         public bool ShowSJSignalArrows
         {
@@ -9463,7 +9562,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "SuperJumpBoost: Show Signal Arrow Label", Order = 27, GroupName = "Display")]
+        [Display (Name = "SuperJumpBoost: Show Signal Arrow Label", Order = 42, GroupName = "Indicator Display")]
         [RefreshProperties (RefreshProperties.All)]
         public bool ShowSJSignalArrowLabels
         {
@@ -9471,14 +9570,14 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "SuperJumpBoost: Signal Arrow Text", Order = 28, GroupName = "Display")]
+        [Display (Name = "SuperJumpBoost: Signal Arrow Text", Order = 43, GroupName = "Indicator Display")]
         public string SJSignalArrowText
         {
             get; set;
         }
 
         [XmlIgnore]
-        [Display (Name = "SuperJumpBoost: Indicator Color", Order = 29, GroupName = "Display")]
+        [Display (Name = "SuperJumpBoost: Indicator Color", Order = 44, GroupName = "Indicator Display")]
         public Brush SJ_Brush
         {
             get; set;
@@ -9498,7 +9597,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [XmlIgnore]
-        [Display (Name = "SuperJumpBoost: Signal Arrow Color", Order = 30, GroupName = "Display")]
+        [Display (Name = "SuperJumpBoost: Signal Arrow Color", Order = 45, GroupName = "Indicator Display")]
         public Brush SJSignalArrowBrush
         {
             get; set;
@@ -9517,9 +9616,9 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             }
         }
 
-        // -------------------- Display: SumoPullback --------------------
+        // -------------------- Indicator Display: SumoPullback --------------------
         [NinjaScriptProperty]
-        [Display (Name = "SumoPullback: Show Indicator", Order = 31, GroupName = "Display")]
+        [Display (Name = "SumoPullback: Show Indicator", Order = 50, GroupName = "Indicator Display")]
         [RefreshProperties (RefreshProperties.All)]
         public bool ShowSUIndicator
         {
@@ -9527,7 +9626,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "SumoPullback: Show Signal Arrows", Order = 32, GroupName = "Display")]
+        [Display (Name = "SumoPullback: Show Signal Arrows", Order = 51, GroupName = "Indicator Display")]
         [RefreshProperties (RefreshProperties.All)]
         public bool ShowSUSignalArrows
         {
@@ -9535,7 +9634,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "SumoPullback: Show Signal Arrow Label", Order = 33, GroupName = "Display")]
+        [Display (Name = "SumoPullback: Show Signal Arrow Label", Order = 52, GroupName = "Indicator Display")]
         [RefreshProperties (RefreshProperties.All)]
         public bool ShowSUSignalArrowLabels
         {
@@ -9543,14 +9642,14 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "SumoPullback: Signal Arrow Text", Order = 34, GroupName = "Display")]
+        [Display (Name = "SumoPullback: Signal Arrow Text", Order = 53, GroupName = "Indicator Display")]
         public string SUSignalArrowText
         {
             get; set;
         }
 
         [XmlIgnore]
-        [Display (Name = "SumoPullback: Indicator Color", Order = 35, GroupName = "Display")]
+        [Display (Name = "SumoPullback: Indicator Color", Order = 54, GroupName = "Indicator Display")]
         public Brush SU_Brush
         {
             get; set;
@@ -9570,7 +9669,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [XmlIgnore]
-        [Display (Name = "SumoPullback: Signal Arrow Color", Order = 36, GroupName = "Display")]
+        [Display (Name = "SumoPullback: Signal Arrow Color", Order = 55, GroupName = "Indicator Display")]
         public Brush SUSignalArrowBrush
         {
             get; set;
@@ -9589,9 +9688,9 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             }
         }
 
-        // ── NobleCloud display ──────────────────────────────────────────────────────────
+        // ── Indicator Display: NobleCloud ─────────────────────────────────────────────
         [NinjaScriptProperty]
-        [Display (Name = "NobleCloud: Show Indicator", Order = 37, GroupName = "Display")]
+        [Display (Name = "NC: Show Indicator", Order = 60, GroupName = "Indicator Display")]
         [RefreshProperties (RefreshProperties.All)]
         public bool ShowNCIndicator
         {
@@ -9599,7 +9698,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "NobleCloud: Show Signal Arrows", Order = 38, GroupName = "Display")]
+        [Display (Name = "NC: Show Signal Arrows", Order = 61, GroupName = "Indicator Display")]
         [RefreshProperties (RefreshProperties.All)]
         public bool ShowNCSignalArrows
         {
@@ -9607,7 +9706,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "NobleCloud: Show Signal Arrow Labels", Order = 39, GroupName = "Display")]
+        [Display (Name = "NC: Show Signal Arrow Labels", Order = 62, GroupName = "Indicator Display")]
         [RefreshProperties (RefreshProperties.All)]
         public bool ShowNCSignalArrowLabels
         {
@@ -9615,14 +9714,14 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "NobleCloud: Signal Arrow Text", Order = 40, GroupName = "Display")]
+        [Display (Name = "NC: Signal Arrow Text", Order = 63, GroupName = "Indicator Display")]
         public string NCSignalArrowText
         {
             get; set;
         }
 
         [XmlIgnore]
-        [Display (Name = "NobleCloud: Indicator Color", Order = 41, GroupName = "Display")]
+        [Display (Name = "NC: Indicator Color", Order = 64, GroupName = "Indicator Display")]
         public Brush NC_Brush
         {
             get; set;
@@ -9641,7 +9740,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [XmlIgnore]
-        [Display (Name = "NobleCloud: Signal Arrow Color", Order = 42, GroupName = "Display")]
+        [Display (Name = "NC: Signal Arrow Color", Order = 65, GroupName = "Indicator Display")]
         public Brush NCSignalArrowBrush
         {
             get; set;
@@ -9659,9 +9758,9 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             }
         }
 
-        // -------------------- Display: Group Trigger --------------------
+        // -------------------- Indicator Display: Group Trigger --------------------
         [NinjaScriptProperty]
-        [Display (Name = "Group: Show Trigger Arrows", Order = 43, GroupName = "Display")]
+        [Display (Name = "Group: Show Trigger Arrows", Order = 70, GroupName = "Indicator Display")]
         [RefreshProperties (RefreshProperties.All)]
         public bool ShowGroupTriggerArrows
         {
@@ -9669,7 +9768,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Group: Show Trigger Arrow Label", Order = 44, GroupName = "Display")]
+        [Display (Name = "Group: Show Trigger Arrow Label", Order = 71, GroupName = "Indicator Display")]
         [RefreshProperties (RefreshProperties.All)]
         public bool ShowGroupTriggerArrowLabel
         {
@@ -9677,14 +9776,14 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Group: Trigger Arrow Text", Order = 45, GroupName = "Display")]
+        [Display (Name = "Group: Trigger Arrow Text", Order = 72, GroupName = "Indicator Display")]
         public string GroupTriggerArrowText
         {
             get; set;
         }
 
         [XmlIgnore]
-        [Display (Name = "Group: Trigger Arrow Color", Order = 46, GroupName = "Display")]
+        [Display (Name = "Group: Trigger Arrow Color", Order = 73, GroupName = "Indicator Display")]
         public Brush GroupTriggerBrush
         {
             get; set;
@@ -9703,10 +9802,10 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             }
         }
 
-        // -------------------- Display: Global Arrow Settings --------------------
+        // -------------------- Indicator Display: Global Arrow Settings --------------------
         [NinjaScriptProperty]
         [Range (0, int.MaxValue)]
-        [Display (Name = "Arrow Offset (Ticks)", Order = 47, GroupName = "Display")]
+        [Display (Name = "Arrow Offset (Ticks)", Order = 80, GroupName = "Indicator Display")]
         public int ArrowOffset
         {
             get; set;
@@ -9714,14 +9813,14 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
         [NinjaScriptProperty]
         [Range (1, int.MaxValue)]
-        [Display (Name = "Signal Arrow Text Offset From Arrow (Ticks)", Order = 48, GroupName = "Display")]
+        [Display (Name = "Signal Arrow Text Offset From Arrow (Ticks)", Order = 81, GroupName = "Indicator Display")]
         public int SignalArrowTextOffsetTicks
         {
             get; set;
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Enable Group Trigger BackBrush", Order = 49, GroupName = "Display")]
+        [Display (Name = "Enable Group Trigger BackBrush", Order = 82, GroupName = "Indicator Display")]
         [RefreshProperties (RefreshProperties.All)]
         public bool EnableGroupTriggerBackBrush
         {
@@ -9729,7 +9828,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [XmlIgnore]
-        [Display (Name = "Group Trigger BackBrush", Order = 50, GroupName = "Display")]
+        [Display (Name = "Group Trigger BackBrush", Order = 83, GroupName = "Indicator Display")]
         public Brush GroupTriggerBackBrush
         {
             get; set;
@@ -9748,9 +9847,9 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             }
         }
 
-        // ==================== Trade Markers - ATMPlotMarkers integration ====================
+        // ==================== ATM Marker Display ====================
         [NinjaScriptProperty]
-        [Display (Name = "Show Entry/Exit Markers", Order = 51, GroupName = "Display", Description = "ATM mode only. Draw lines from entry to exit on every closed or scaled-out trade leg.")]
+        [Display (Name = "Show Entry/Exit Markers", Order = 0, GroupName = "ATM Marker Display", Description = "ATM mode only. Draw lines from entry to exit on every closed or scaled-out trade leg.")]
         [RefreshProperties (RefreshProperties.All)]
         public bool ShowEntryExitMarkers
         {
@@ -9759,14 +9858,14 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
         [NinjaScriptProperty]
         [Range (1, int.MaxValue)]
-        [Display (Name = "Line Width", Order = 52, GroupName = "Display", Description = "Width of the entry-to-exit line.")]
+        [Display (Name = "Line Width", Order = 1, GroupName = "ATM Marker Display", Description = "Width of the entry-to-exit line.")]
         public int EntryExitLineWidth
         {
             get; set;
         }
 
         [XmlIgnore]
-        [Display (Name = "Long Color", Order = 53, GroupName = "Display", Description = "Line and label color for long ATM trades.")]
+        [Display (Name = "Long Color", Order = 2, GroupName = "ATM Marker Display", Description = "Line and label color for long ATM trades.")]
         public Brush EntryExitLongColor
         {
             get; set;
@@ -9786,7 +9885,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [XmlIgnore]
-        [Display (Name = "Short Color", Order = 54, GroupName = "Display", Description = "Line and label color for short ATM trades.")]
+        [Display (Name = "Short Color", Order = 3, GroupName = "ATM Marker Display", Description = "Line and label color for short ATM trades.")]
         public Brush EntryExitShortColor
         {
             get; set;
@@ -9806,7 +9905,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Show Text Labels", Order = 55, GroupName = "Display", Description = "Show entry and exit price labels next to the line endpoints.")]
+        [Display (Name = "Show Text Labels", Order = 4, GroupName = "ATM Marker Display", Description = "Show entry and exit price labels next to the line endpoints.")]
         [RefreshProperties (RefreshProperties.All)]
         public bool ShowEntryExitLabels
         {
@@ -9815,7 +9914,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
         [NinjaScriptProperty]
         [Range (6, 24)]
-        [Display (Name = "Text Size", Order = 56, GroupName = "Display", Description = "Font size of the entry/exit price labels.")]
+        [Display (Name = "Text Size", Order = 5, GroupName = "ATM Marker Display", Description = "Font size of the entry/exit price labels.")]
         public int EntryExitTextSize
         {
             get; set;
@@ -9823,7 +9922,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
         [NinjaScriptProperty]
         [Range (0, int.MaxValue)]
-        [Display (Name = "Entry/Exit Text Offset Ticks", Order = 57, GroupName = "Display",
+        [Display (Name = "Entry/Exit Text Offset Ticks", Order = 6, GroupName = "ATM Marker Display",
             Description = "Tick offset for ATM trade marker text. Long labels draw above bars; short labels draw below bars.")]
         public int EntryExitTextOffsetTicks
         {
