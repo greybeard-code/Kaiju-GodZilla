@@ -141,6 +141,12 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         private double lastFixedExitCandidatePrice = 0.0;
         private DateTime lastFixedExitCandidateTime = Core.Globals.MinDate;
 
+        // FlattenEverything reentrancy guard. Prevents two concurrent triggers (e.g.
+        // session-end + daily-limit fired on the same bar) from both running the full
+        // close sequence and producing duplicate AtmStrategyClose / ExitLong calls.
+        private readonly object _flattenLock = new object ();
+        private volatile bool _flattenInProgress = false;
+
         // Martingale ATM recovery
         private string martingaleAtmStrategyId = string.Empty;
         private string martingaleOrderId = string.Empty;
@@ -451,7 +457,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 Description = "GodZillaKilla — strategy using direct KingOrderBlock/PANAKanal/ThunderZilla/SuperJumpBoost/SumoPullback/NobleCloud child indicator signals.";
                 Name = "GodZillaKilla";
                 StrategyName = Name;
-                _strategyVersion = "1.6.9";
+                _strategyVersion = "1.7.0";
 
                 Author = "Playr101";
                 Credits = "GreyBeard, ninZa.co, RenkoKings, ES, rbro999";
@@ -5850,6 +5856,47 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             if (State != State.Realtime)
                 return;
 
+            // Reentrancy guard: if a flatten is already in flight (e.g. session-end
+            // and daily-limit both fire on the same bar/tick), short-circuit. Each
+            // FlattenEverything call submits AtmStrategyClose + ExitLong/Short +
+            // cancels working orders; running them twice produces redundant submissions
+            // and log noise. Idempotent at NT8's order layer, but the duplicate prints
+            // and double AtmStrategyClose can confuse debugging. Try-finally ensures
+            // the flag clears even if an exception escapes downstream calls.
+            //
+            // Double-checked: the volatile flag is the fast path; the lock is the
+            // authoritative check that prevents two concurrent callers from both
+            // passing the flag check before either sets it.
+            if (_flattenInProgress)
+            {
+                if (EnableDebug)
+                    Print ($"[{Name}] FlattenEverything REENTRANT CALL SKIPPED ({Time[0]:HH:mm:ss}): {reason}");
+                return;
+            }
+
+            lock (_flattenLock)
+            {
+                if (_flattenInProgress)
+                {
+                    if (EnableDebug)
+                        Print ($"[{Name}] FlattenEverything REENTRANT CALL SKIPPED in lock ({Time[0]:HH:mm:ss}): {reason}");
+                    return;
+                }
+                _flattenInProgress = true;
+            }
+
+            try
+            {
+                FlattenEverythingInternal (reason);
+            }
+            finally
+            {
+                _flattenInProgress = false;
+            }
+        }
+
+        private void FlattenEverythingInternal (string reason)
+        {
             ClearPendingSignalEntry ();
             ClearFreshStartInheritedPositionBaseline ();
 
