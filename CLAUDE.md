@@ -21,6 +21,8 @@ NinjaScript C# code for NinjaTrader 8 (NT8). There is no build system, test runn
 
 **Never change the namespaces.** NT8 uses them for internal serialization of saved chart templates and ATM settings. Renaming breaks all existing user configurations silently.
 
+The default namespace for all new indicators is `NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla`. New strategies go under `NinjaTrader.NinjaScript.Strategies.Playr101`.
+
 ---
 
 ## Compile Order Dependency
@@ -43,6 +45,13 @@ NT8 calls `OnStateChange()` with sequential states. Each has strict rules:
 | `Terminated` | Dispose everything: SharpDX resources, `StreamWriter`, event handler unsubscriptions. |
 
 Never call `AddChartIndicator()` outside `DataLoaded`. Never create `Series<double>` outside `DataLoaded`.
+
+**Required defaults for every indicator** — set these in `State.SetDefaults`:
+```csharp
+ShowTransparentPlotsInDataBox = true;  // signal plots appear in the NT8 Data Box without drawing visible lines
+IsSuspendedWhileInactive      = false; // indicator stays active and updating even when the chart tab is not visible
+```
+Omitting either will cause signal values to disappear from the Data Box or stop updating on background charts.
 
 ---
 
