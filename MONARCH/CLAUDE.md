@@ -1,0 +1,258 @@
+# CLAUDE.md — MONARCH Intelligence Report System
+
+Guidance for working with this Python sub-project inside the Kaiju repository.
+
+---
+
+## What This Is
+
+A standalone Windows executable (`MONARCH.exe`) that generates HTML trade reports
+from NinjaTrader 8 GodZilla CSV logs. It requires no Python on the target machine
+once compiled with PyInstaller.
+
+Source lives at `C:\Dev\Kaiju\MONARCH\src\`.
+Compiled exe deploys to `%USERPROFILE%\Documents\NinjaTrader 8\MONARCH\MONARCH.exe`.
+
+---
+
+## Python Environment — Critical
+
+The user runs **pyenv-win** with multiple Python versions:
+
+| Command   | Version | Owns PyInstaller? |
+|-----------|---------|-------------------|
+| `python`  | 3.14.3  | No                |
+| (pyenv)   | 3.10.5  | Yes — PyInstaller 6.20.0 is installed here |
+
+**Never invoke PyInstaller with the default `python` command.** The build scripts
+derive the correct interpreter from `pip show pyinstaller`'s `Location:` field
+(site-packages → up two dirs → `python.exe`).
+
+The canonical build tool is `build.ps1` (PowerShell). `build.bat` also exists
+as an alternative but is less reliable in pyenv environments.
+
+---
+
+## Building
+
+```powershell
+# One-time: generate the exe icon
+python make_icon.py        # auto-installs Pillow; writes monarch.ico
+
+# Compile + deploy
+.\build.ps1
+```
+
+`build.ps1` does:
+1. Locates the Python 3.10.5 interpreter that owns PyInstaller
+2. Removes `enum34` if installed (incompatible with PyInstaller 6.x)
+3. Cleans previous `build/`, `dist/`, `MONARCH.spec`
+4. Runs PyInstaller `--onefile --console --icon monarch.ico` (icon optional)
+5. Copies `dist\MONARCH.exe` to `NinjaTrader 8\MONARCH\MONARCH.exe`
+
+### Known build pitfalls
+
+- **`enum34`**: Must not be installed in the 3.10.5 environment. PyInstaller 6.x
+  refuses to run with it. `build.ps1` auto-removes it; if it reappears, uninstall:
+  ```powershell
+  & "C:\Users\dcjon\.pyenv\pyenv-win\versions\3.10.5\python.exe" -m pip uninstall enum34
+  ```
+
+- **`$ErrorActionPreference = 'Stop'` and pip**: Native commands writing to stderr
+  throw terminating errors under Stop mode. The blocklist check in `build.ps1`
+  temporarily switches to `Continue` around `pip show` calls — keep this guard.
+
+- **Quoted exe paths in PowerShell**: Use the call operator `&`:
+  ```powershell
+  & "C:\path\to\python.exe" -m pip ...   # correct
+  "C:\path\to\python.exe" -m pip ...     # wrong — tries to run a string
+  ```
+
+---
+
+## Module Map
+
+```
+src/
+  monarch.py       Entry point / orchestrator (CLI parsing, run loop)
+  config.py        NT8 path detection, account constants, MONARCH dir init
+  date_utils.py    Trading-day math, week helpers, missing-report detection
+  log_sync.py      Find GodZilla CSVs in NT8 tree, copy to MONARCH/logs/
+  log_parser.py    Parse CSVs → trade dicts, compute all statistics
+  templates.py     Shared dark-theme CSS + HTML component helpers
+  daily_report.py  Build one day's HTML report
+  weekly_report.py Build Mon–Fri weekly summary HTML
+  hub.py           Build CastleBravo.html hub page
+```
+
+---
+
+## Accounts
+
+```python
+LIVE_ACCOUNTS = {'APEX750470000084', 'APEX750470000085'}
+ACCT_LABEL    = {'APEX750470000084': '084', 'APEX750470000085': '085'}
+ACCT_GRADE    = {'APEX750470000084': 'G4',  'APEX750470000085': 'G3'}
+```
+
+Sim accounts (names starting with `'Sim'`) are parsed from CSVs but flagged
+`is_live=False` and excluded from all reports and statistics.
+
+---
+
+## GodZilla CSV Format
+
+Columns written by NinjaTrader 8:
+
+```
+OpenTime, Account, Instrument, OpenPrice, Qty, CloseTime,
+Trigger, Direction, AtmStrategyName, RealizedPnL,
+SignalCombo, UsedSignals, TradeResult, LastTradeLine
+```
+
+- Files are named `GodZilla_*.csv`. `GodZuki_*.csv` files are excluded (those are
+  strategy state files, not trade logs).
+- `OpenTime` / `CloseTime` format: `%Y-%m-%d %H:%M:%S`
+- Deduplication key: `(Account, OpenTime)` — same trade can appear in multiple
+  CSV files if the strategy was restarted.
+
+---
+
+## Trading Day Boundary
+
+**6:00 PM ET = start of a new session.**
+Session date = the calendar day on which the session **ends**.
+
+```
+Trade open 22:10 on Tuesday  →  session date Wednesday
+Trade open 09:45 on Wednesday →  session date Wednesday
+```
+
+Weekend guardrail in `get_report_date()`:
+- Saturday → preceding Friday
+- Sunday   → preceding Friday
+
+This means `MONARCH.exe` can be scheduled daily (Mon–Sun) without creating
+blank weekend reports.
+
+---
+
+## Output Folder Structure
+
+```
+NinjaTrader 8\
+  MONARCH\
+    CastleBravo.html          Hub / index page
+    config.json               Per-installation settings (optional)
+    logs\                     GodZilla CSVs copied here by log_sync
+    reports\
+      daily_YYYYMMDD.html     One per trading day
+      weekly_YYYYMMDD.html    One per Friday (Mon–Fri summary)
+      index.json              Internal metadata / cumulative stats
+```
+
+- Hub (`CastleBravo.html`) lives one level **above** `reports/`.
+- Daily/weekly reports link back to hub via `../CastleBravo.html`.
+- Hub links to reports via relative `reports/daily_YYYYMMDD.html`.
+
+---
+
+## CLI Reference
+
+```
+MONARCH.exe                        Standard daily run
+MONARCH.exe --backfill             Generate ALL missing reports
+MONARCH.exe --date 2026-05-22      Force-regenerate a specific date
+MONARCH.exe --weekly               Force-regenerate this week's summary
+MONARCH.exe --nt8-path "D:\NT8"   Override NT8 folder location
+MONARCH.exe --dry-run              Preview actions, write nothing
+MONARCH.exe --version              Print version
+```
+
+---
+
+## NT8 Folder Detection (config.py)
+
+Search order in `find_nt8_folder()`:
+
+1. `--nt8-path` CLI argument
+2. `NT8_PATH` environment variable
+3. Windows registry `HKCU\...\Shell Folders\Personal` + `\NinjaTrader 8`
+   (handles OneDrive folder redirection authoritatively)
+4. `OneDrive*` subdirectories under `Path.home()`
+5. `~/Documents/NinjaTrader 8` and `C:\Users\<user>\Documents\NinjaTrader 8`
+
+---
+
+## Statistics Computed (log_parser.py)
+
+`compute_stats(trades)` returns:
+
+| Key             | Description                              |
+|-----------------|------------------------------------------|
+| `pnl`           | Net P&L (sum of RealizedPnL)             |
+| `trades`        | Total trade count                        |
+| `wins` / `losses` | Count by TradeResult                   |
+| `win_rate`      | wins / trades (0–1)                      |
+| `profit_factor` | gross_win / gross_loss                   |
+| `avg_win` / `avg_loss` | Average per winning/losing trade  |
+| `rr`            | avg_win / avg_loss (reward:risk)         |
+| `long_*` / `short_*` | Breakdown by direction             |
+
+Additional breakdowns available:
+- `grade_stats(trades)` — by G3/G4/G5 signal grade
+- `ko_stats(trades)` — with KO vs without KO
+- `combo_stats(trades)` — by SignalCombo (sorted by frequency)
+- `account_stats(trades)` — per APEX account
+
+---
+
+## Icon Generation (make_icon.py)
+
+Run once before building. Generates `monarch.ico` (multi-resolution: 16, 32, 48, 256 px):
+
+```powershell
+python make_icon.py    # auto-installs Pillow if missing
+```
+
+Design: dark indigo background, rounded rect with indigo border, large white "M"
+with teal glow, small teal dot in lower-right corner. Colors match the HTML
+dark theme in `templates.py`.
+
+`build.ps1` passes `--icon monarch.ico` to PyInstaller automatically when the
+file exists; silently skips it if absent.
+
+---
+
+## Running from Source (no compile needed)
+
+```powershell
+cd C:\Dev\Kaiju\MONARCH
+python src\monarch.py                  # standard run
+python src\monarch.py --backfill       # fill all gaps
+python src\monarch.py --dry-run        # preview only
+```
+
+The entry point adds `src/` to `sys.path` automatically.
+
+---
+
+## Windows Task Scheduler
+
+Recommended: Mon–Fri at 5:00 PM.
+
+```
+Action  : Start a program
+Program : C:\Users\<user>\Documents\NinjaTrader 8\MONARCH\MONARCH.exe
+```
+
+Friday 5 PM generates both the daily and weekly summary automatically.
+Saturday/Sunday runs are safe (map to Friday, no blank reports created).
+
+---
+
+## Version History
+
+| Version | Notes |
+|---------|-------|
+| 1.0.0   | Initial release — modular rewrite of generate_report.py. Standalone exe, auto log sync, backfill, Sat/Sun guardrail, CastleBravo hub, MONARCH branding, icon support. |

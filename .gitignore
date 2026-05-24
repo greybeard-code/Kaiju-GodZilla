@@ -1,0 +1,34 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+dist/
+build/
+*.spec
+
+# ── Virtual environments ───────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+
+# ── PyInstaller output ─────────────────────────────────────────────────────────
+# Keep source; exclude compiled artefacts
+MONARCH/dist/
+MONARCH/build/
+MONARCH/*.spec
+
+# ── OS / editor ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# ── NT8 generated files (not source) ──────────────────────────────────────────
+*.suo
+*.user
