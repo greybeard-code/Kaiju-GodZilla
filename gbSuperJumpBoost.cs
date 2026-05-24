@@ -6,7 +6,6 @@ using System.ComponentModel.DataAnnotations;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Threading;
 using System.Xml.Serialization;
@@ -24,16 +23,30 @@ using SolidColorBrush = System.Windows.Media.SolidColorBrush;
 using Color = System.Windows.Media.Color;
 #endregion
 
-namespace NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla
+namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 {
-[CategoryOrder("Gradient", 1000030)]
-[CategoryOrder("Critical", 1000070)]
-[CategoryOrder("Special", 1000060)]
-[CategoryOrder("Toggle", 1000050)]
-[CategoryOrder("Graphics", 1000020)]
-[CategoryOrder("Alerts", 1000040)]
+public enum gbSuperJumpBoostTextPosition
+{
+	BottomLeft = 0,
+	BottomRight = 1,
+	Center = 2,
+	TopLeft = 3,
+	TopRight = 4
+}
+
+public enum gbSuperJumpBoost_RenderingMethod
+{
+	Builtin,
+	Custom
+}
+
 [CategoryOrder("Developer", 0)]
-[CategoryOrder("General", 1000010)]
+[CategoryOrder("General",   1000010)]
+[CategoryOrder("Graphics",  1000020)]
+[CategoryOrder("Gradient",  1000030)]
+[CategoryOrder("Alerts",    1000040)]
+[CategoryOrder("Special",   1000060)]
+[CategoryOrder("Critical",  1000070)]
 public class gbSuperJumpBoost : Indicator
 {
 	private class ZoneInfo
@@ -156,8 +169,6 @@ public class gbSuperJumpBoost : Indicator
 		ZoneStart
 	}
 
-	private SuperJumpBoostTextPosition togglePositionAlignment;
-
 	private const int defaultMargin = 5;
 
 	private int SlowdownScan;
@@ -256,15 +267,11 @@ public class gbSuperJumpBoost : Indicator
 
 	private Window alertWindow;
 
-	private Grid toggle;
-	private Button toggleButton;
-	private Thumb toggleDrag;
-
 	private const string prefix = "gbSuperJumpBoost";
 
-	private const string indicatorName = "gb Super JumpBoost";
+	private const string indicatorName = "Super JumpBoost";
 
-	private const string indicatorNameFull = "gb Super JumpBoost";
+	private const string indicatorNameFull = "Super JumpBoost by GreyBeard";
 
 	private bool isCharting;
 
@@ -469,8 +476,14 @@ public class gbSuperJumpBoost : Indicator
 	[Display(Name = "Switched On", Order = 0, GroupName = "Critical")]
 	public bool SwitchedOn { get; set; }
 
+	[Display(Name = "Author",  Order = 0,  GroupName = "Developer")]
+	public string Author  => "GreyBeard";
+
+	[Display(Name = "Website", Order = 5,  GroupName = "Developer")]
+	public string Website => "https://greybeardconsulting.net/";
+
 	[Display(Name = "Version", Order = 10, GroupName = "Developer")]
-	public string Version => "1.0.1";
+	public string Version => "1.1";
 
 	[Display(Name = "Screen DPI", Order = 100, GroupName = "General")]
 	public int ScreenDPI { get; set; }
@@ -745,171 +758,6 @@ public class gbSuperJumpBoost : Indicator
 	[Display(Name = "Signal: Split (Bars)", Order = 106, GroupName = "Parameters")]
 	public int SignalSplit { get; set; }
 
-	[Display(Name = "Enabled", Order = 0, GroupName = "Toggle")]
-	public bool ToggleEnabled { get; set; }
-
-	[XmlIgnore]
-	[Display(Name = "Background: On", Order = 10, GroupName = "Toggle")]
-	public Brush ToggleBackBrushOn { get; set; }
-
-	[Browsable(false)]
-	public string ToggleBackBrushOn_Serialize
-	{
-		get
-		{
-			return Serialize.BrushToString(ToggleBackBrushOn);
-		}
-		set
-		{
-			ToggleBackBrushOn = Serialize.StringToBrush(value);
-		}
-	}
-
-	[XmlIgnore]
-	[Display(Name = "Background: Off", Order = 11, GroupName = "Toggle")]
-	public Brush ToggleBackBrushOff { get; set; }
-
-	[Browsable(false)]
-	public string ToggleBackBrushOff_Serialize
-	{
-		get
-		{
-			return Serialize.BrushToString(ToggleBackBrushOff);
-		}
-		set
-		{
-			ToggleBackBrushOff = Serialize.StringToBrush(value);
-		}
-	}
-
-	[Display(Name = "Text: String", Order = 20, GroupName = "Toggle")]
-	public string ToggleTextString { get; set; }
-
-	[XmlIgnore]
-	[Display(Name = "Text: Color", Order = 21, GroupName = "Toggle")]
-	public Brush ToggleTextBrush { get; set; }
-
-	[Browsable(false)]
-	public string ToggleTextBrush_Serialize
-	{
-		get
-		{
-			return Serialize.BrushToString(ToggleTextBrush);
-		}
-		set
-		{
-			ToggleTextBrush = Serialize.StringToBrush(value);
-		}
-	}
-
-	[Display(Name = "Text: Size", Order = 22, GroupName = "Toggle")]
-	public int ToggleTextSize { get; set; }
-
-	[XmlIgnore]
-	[Display(Name = "Drag Bar: Color", Order = 30, GroupName = "Toggle")]
-	public Brush ToggleDragBrush { get; set; }
-
-	[Browsable(false)]
-	public string ToggleDragBrush_Serialize
-	{
-		get
-		{
-			return Serialize.BrushToString(ToggleDragBrush);
-		}
-		set
-		{
-			ToggleDragBrush = Serialize.StringToBrush(value);
-		}
-	}
-
-	[Display(Name = "Position: Alignment", Order = 40, GroupName = "Toggle")]
-	public SuperJumpBoostTextPosition TogglePositionAlignment
-	{
-		get
-		{
-			return togglePositionAlignment;
-		}
-		set
-		{
-			togglePositionAlignment = value;
-			TogglePositionMarginLeft = 0;
-			TogglePositionMarginTop = 0;
-			TogglePositionMarginRight = 0;
-			TogglePositionMarginBottom = 0;
-			switch (value)
-			{
-				case SuperJumpBoostTextPosition.TopLeft:
-					TogglePositionMarginLeft = 5;
-					TogglePositionMarginTop = 5;
-					break;
-				case SuperJumpBoostTextPosition.TopRight:
-					TogglePositionMarginRight = 5;
-					TogglePositionMarginTop = 5;
-					break;
-				case SuperJumpBoostTextPosition.BottomLeft:
-					TogglePositionMarginLeft = 5;
-					TogglePositionMarginBottom = 5;
-					break;
-				case SuperJumpBoostTextPosition.BottomRight:
-					TogglePositionMarginRight = 5;
-					TogglePositionMarginBottom = 5;
-					break;
-				case SuperJumpBoostTextPosition.Center:
-					TogglePositionMarginLeft = 5;
-					TogglePositionMarginTop = 5;
-					TogglePositionMarginRight = 5;
-					TogglePositionMarginBottom = 5;
-					break;
-			}
-			ApplyTogglePosition();
-		}
-	}
-
-	private void ApplyTogglePosition()
-	{
-		if (toggle == null || ChartControl == null) return;
-		ChartControl.Dispatcher.InvokeAsync(delegate
-		{
-			if (toggle == null) return;
-			switch (togglePositionAlignment)
-			{
-				case SuperJumpBoostTextPosition.TopLeft:
-					toggle.HorizontalAlignment = HorizontalAlignment.Left;
-					toggle.VerticalAlignment = VerticalAlignment.Top;
-					break;
-				case SuperJumpBoostTextPosition.TopRight:
-					toggle.HorizontalAlignment = HorizontalAlignment.Right;
-					toggle.VerticalAlignment = VerticalAlignment.Top;
-					break;
-				case SuperJumpBoostTextPosition.BottomLeft:
-					toggle.HorizontalAlignment = HorizontalAlignment.Left;
-					toggle.VerticalAlignment = VerticalAlignment.Bottom;
-					break;
-				case SuperJumpBoostTextPosition.BottomRight:
-					toggle.HorizontalAlignment = HorizontalAlignment.Right;
-					toggle.VerticalAlignment = VerticalAlignment.Bottom;
-					break;
-				case SuperJumpBoostTextPosition.Center:
-					toggle.HorizontalAlignment = HorizontalAlignment.Center;
-					toggle.VerticalAlignment = VerticalAlignment.Center;
-					break;
-			}
-			toggle.Margin = new Thickness(TogglePositionMarginLeft, TogglePositionMarginTop, TogglePositionMarginRight, TogglePositionMarginBottom);
-		});
-	}
-
-	[Display(Name = "Position: Margin Left", Order = 41, GroupName = "Toggle")]
-	public double TogglePositionMarginLeft { get; set; }
-
-	[Display(Name = "Position: Margin Top", Order = 42, GroupName = "Toggle")]
-	public double TogglePositionMarginTop { get; set; }
-
-	[Display(Name = "Position: Margin Right", Order = 43, GroupName = "Toggle")]
-	public double TogglePositionMarginRight { get; set; }
-
-	[Display(Name = "Position: Margin Bottom", Order = 44, GroupName = "Toggle")]
-	public double TogglePositionMarginBottom { get; set; }
-
 	[Display(Name = "Z Order", Order = 0, GroupName = "Special")]
 	public int IndicatorZOrder { get; set; }
 
@@ -934,7 +782,7 @@ public class gbSuperJumpBoost : Indicator
 		{
 			if (!(Parent is MarketAnalyzerColumnBase))
 			{
-				return "gb Super JumpBoost" + GetUserNote();
+				return "Super JumpBoost by GreyBeard" + GetUserNote();
 			}
 			return base.DisplayName;
 		}
@@ -979,14 +827,6 @@ public class gbSuperJumpBoost : Indicator
 						{
 							ChartControl.Dispatcher.InvokeAsync(delegate
 							{
-								if (toggle != null)
-								{
-									toggleDrag.DragDelta -= OnToggleDrag;
-									toggleButton.Click -= OnToggleClick;
-									toggle = null;
-									toggleButton = null;
-									toggleDrag = null;
-								}
 								if (alertWindow != null)
 								{
 									alertWindow.Close();
@@ -1016,55 +856,7 @@ public class gbSuperJumpBoost : Indicator
 						{
 							return;
 						}
-						ChartControl.Dispatcher.InvokeAsync(delegate
-						{
-							if (ToggleEnabled && toggle == null)
-							{
-								Thickness thickness = new Thickness(TogglePositionMarginLeft, TogglePositionMarginTop, TogglePositionMarginRight, TogglePositionMarginBottom);
 
-								toggle = new Grid();
-								toggle.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(6) });
-								toggle.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-								toggle.HorizontalAlignment = HorizontalAlignment.Left;
-								toggle.VerticalAlignment = VerticalAlignment.Top;
-								toggle.Margin = thickness;
-
-								toggleButton = new Button
-								{
-									Content = ToggleTextString,
-									Foreground = ToggleTextBrush,
-									FontSize = ToggleTextSize,
-									Background = SwitchedOn ? ToggleBackBrushOn : ToggleBackBrushOff,
-									Padding = new Thickness(6, 3, 6, 3),
-									Cursor = System.Windows.Input.Cursors.Hand
-								};
-								var btnBorder = new FrameworkElementFactory(typeof(System.Windows.Controls.Border));
-								btnBorder.SetValue(System.Windows.Controls.Border.BackgroundProperty, new System.Windows.Data.Binding("Background") { RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.TemplatedParent) });
-								btnBorder.SetValue(System.Windows.Controls.Border.PaddingProperty, new System.Windows.Data.Binding("Padding") { RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.TemplatedParent) });
-								var btnContent = new FrameworkElementFactory(typeof(ContentPresenter));
-								btnBorder.AppendChild(btnContent);
-								toggleButton.Template = new ControlTemplate(typeof(Button)) { VisualTree = btnBorder };
-								Grid.SetColumn(toggleButton, 1);
-								toggle.Children.Add(toggleButton);
-
-								toggleDrag = new Thumb
-								{
-									Width = 6,
-									Cursor = System.Windows.Input.Cursors.SizeAll
-								};
-								var rectFactory = new FrameworkElementFactory(typeof(System.Windows.Shapes.Rectangle));
-								rectFactory.SetValue(System.Windows.Shapes.Shape.FillProperty, ToggleDragBrush);
-								toggleDrag.Template = new ControlTemplate(typeof(Thumb)) { VisualTree = rectFactory };
-								Grid.SetColumn(toggleDrag, 0);
-								toggle.Children.Add(toggleDrag);
-
-								ApplyTogglePosition();
-
-								toggleDrag.DragDelta += OnToggleDrag;
-								toggleButton.Click += OnToggleClick;
-								UserControlCollection.Add(toggle);
-							}
-						});
 					}
 				}
 				else
@@ -1146,7 +938,7 @@ public class gbSuperJumpBoost : Indicator
 		}
 		else
 		{
-			Description = string.Empty;
+			Description = "Supply/demand zone detector with multi-level price zones.";
 			Name = "gbSuperJumpBoost";
 			Calculate = Calculate.OnBarClose;
 			IsOverlay = true;
@@ -1247,18 +1039,6 @@ public class gbSuperJumpBoost : Indicator
 			SignalSplit = 20;
 			SignalCloseThreshold = 70;
 			SignalQuantityPerZone = 2;
-			ToggleEnabled = true;
-			ToggleBackBrushOn = Brushes.DodgerBlue;
-			ToggleBackBrushOff = Brushes.Silver;
-			ToggleTextString = "gb Super JumpBoost";
-			ToggleTextBrush = Brushes.White;
-			ToggleTextSize = 10;
-			ToggleDragBrush = Brushes.LimeGreen;
-			TogglePositionAlignment = SuperJumpBoostTextPosition.TopLeft;
-			TogglePositionMarginLeft = 5.0;
-			TogglePositionMarginTop = 5.0;
-			TogglePositionMarginRight = 5.0;
-			TogglePositionMarginBottom = 5.0;
 			IndicatorZOrder = -10;
 			UserNote = "instrument (period)";
 			AddPlot(Brushes.Transparent, "Signal: State");
@@ -2462,109 +2242,6 @@ public class gbSuperJumpBoost : Indicator
 	{
 	}
 
-	private void OnToggleDrag(object sender, DragDeltaEventArgs e)
-	{
-		TriggerCustomEvent((Action<object>)delegate
-		{
-			if (isCharting)
-			{
-				ChartControl.Dispatcher.InvokeAsync(delegate
-				{
-					var m = toggle.Margin;
-					toggle.Margin = new Thickness(m.Left + e.HorizontalChange, m.Top + e.VerticalChange, m.Right - e.HorizontalChange, m.Bottom - e.VerticalChange);
-					TogglePositionMarginLeft = toggle.Margin.Left;
-					TogglePositionMarginTop = toggle.Margin.Top;
-					TogglePositionMarginRight = toggle.Margin.Right;
-					TogglePositionMarginBottom = toggle.Margin.Bottom;
-				});
-			}
-		}, (object)e);
-	}
-
-	private void OnToggleClick(object sender, RoutedEventArgs e)
-	{
-		TriggerCustomEvent((Action<object>)delegate
-		{
-			if (isCharting)
-			{
-				ChartControl.Dispatcher.InvokeAsync(delegate
-				{
-					SwitchedOn = !SwitchedOn;
-					if (toggleButton != null)
-					{
-						toggleButton.Background = SwitchedOn ? ToggleBackBrushOn : ToggleBackBrushOff;
-					}
-					if (BarEnabled)
-					{
-						if (!SwitchedOn)
-						{
-							for (int num = CurrentBar; num >= 0; num--)
-							{
-								int num2 = CurrentBar - num;
-								if (BarEnabled)
-								{
-									CandleOutlineBrushes[num2] = ChartBars.Properties.ChartStyle.Stroke2.Brush;
-									double valueAt = Close.GetValueAt(num);
-									double valueAt2 = Open.GetValueAt(num);
-									if (!(valueAt <= valueAt2))
-									{
-										BarBrushes[num2] = ChartBars.Properties.ChartStyle.UpBrush;
-									}
-									if (valueAt < valueAt2)
-									{
-										BarBrushes[num2] = ChartBars.Properties.ChartStyle.DownBrush;
-									}
-								}
-							}
-						}
-						else
-						{
-							for (int num3 = CurrentBar; num3 >= 0; num3--)
-							{
-								if (Signal_State.IsValidDataPointAt(num3))
-								{
-									int num4 = (int)Signal_State.GetValueAt(num3);
-									if (num4 != 0)
-									{
-										if (BarEnabled)
-										{
-											PaintBar(isToggleClickEvent: true, num4, num3);
-										}
-									}
-									else
-									{
-										int num5 = CurrentBar - num3;
-										CandleOutlineBrushes[num5] = ChartBars.Properties.ChartStyle.Stroke2.Brush;
-										double valueAt3 = Close.GetValueAt(num3);
-										double valueAt4 = Open.GetValueAt(num3);
-										if (!(valueAt3 <= valueAt4))
-										{
-											BarBrushes[num5] = ChartBars.Properties.ChartStyle.UpBrush;
-										}
-										if (valueAt3 < valueAt4)
-										{
-											BarBrushes[num5] = ChartBars.Properties.ChartStyle.DownBrush;
-										}
-									}
-								}
-							}
-						}
-					}
-					IEnumerator<IDrawingTool> enumerator = ((IEnumerable<IDrawingTool>)DrawObjects).GetEnumerator();
-					while (enumerator.MoveNext())
-					{
-						IDrawingTool current = enumerator.Current;
-						if (current.Tag.Contains("gbSuperJumpBoost"))
-						{
-							((IChartObject)current).IsVisible = SwitchedOn;
-						}
-					}
-					ChartControl.InvalidateVisual();
-				});
-			}
-		}, (object)e);
-	}
-
 	private static Brush CreateOpacityBrush(Brush brush, int opacity)
 	{
 		if (brush is SolidColorBrush solid)
@@ -2614,21 +2291,6 @@ public class gbSuperJumpBoost : Indicator
 
 }
 
-public enum SuperJumpBoostTextPosition
-{
-	BottomLeft = 0,
-	BottomRight = 1,
-	Center = 2,
-	TopLeft = 3,
-	TopRight = 4
-}
-
-public enum gbSuperJumpBoost_RenderingMethod
-{
-	Builtin,
-	Custom
-}
-
 public class gbSuperJumpBoost_SoundConverter : System.ComponentModel.TypeConverter
 {
 	public override System.ComponentModel.TypeConverter.StandardValuesCollection GetStandardValues(System.ComponentModel.ITypeDescriptorContext context)
@@ -2658,19 +2320,19 @@ namespace NinjaTrader.NinjaScript.Indicators
 {
 	public partial class Indicator : NinjaTrader.Gui.NinjaScript.IndicatorRenderBase
 	{
-		private GreyBeard.KingPanaZilla.gbSuperJumpBoost[] cachegbSuperJumpBoost;
-		public GreyBeard.KingPanaZilla.gbSuperJumpBoost gbSuperJumpBoost(bool sensitiveModeEnabled, double offsetLevel1, double offsetLevel2, double offsetLevel3, double offsetLevel4, double offsetBase, int referencePricePeriod, int lineLevelsOffset, int extremeNeighborhood, int signalCloseThreshold, int signalQuantityPerZone, int signalSplit)
+		private GreyBeard.gbSuperJumpBoost[] cachegbSuperJumpBoost;
+		public GreyBeard.gbSuperJumpBoost gbSuperJumpBoost(bool sensitiveModeEnabled, double offsetLevel1, double offsetLevel2, double offsetLevel3, double offsetLevel4, double offsetBase, int referencePricePeriod, int lineLevelsOffset, int extremeNeighborhood, int signalCloseThreshold, int signalQuantityPerZone, int signalSplit)
 		{
 			return gbSuperJumpBoost(Input, sensitiveModeEnabled, offsetLevel1, offsetLevel2, offsetLevel3, offsetLevel4, offsetBase, referencePricePeriod, lineLevelsOffset, extremeNeighborhood, signalCloseThreshold, signalQuantityPerZone, signalSplit);
 		}
 
-		public GreyBeard.KingPanaZilla.gbSuperJumpBoost gbSuperJumpBoost(ISeries<double> input, bool sensitiveModeEnabled, double offsetLevel1, double offsetLevel2, double offsetLevel3, double offsetLevel4, double offsetBase, int referencePricePeriod, int lineLevelsOffset, int extremeNeighborhood, int signalCloseThreshold, int signalQuantityPerZone, int signalSplit)
+		public GreyBeard.gbSuperJumpBoost gbSuperJumpBoost(ISeries<double> input, bool sensitiveModeEnabled, double offsetLevel1, double offsetLevel2, double offsetLevel3, double offsetLevel4, double offsetBase, int referencePricePeriod, int lineLevelsOffset, int extremeNeighborhood, int signalCloseThreshold, int signalQuantityPerZone, int signalSplit)
 		{
 			if (cachegbSuperJumpBoost != null)
 				for (int idx = 0; idx < cachegbSuperJumpBoost.Length; idx++)
 					if (cachegbSuperJumpBoost[idx] != null && cachegbSuperJumpBoost[idx].SensitiveModeEnabled == sensitiveModeEnabled && cachegbSuperJumpBoost[idx].OffsetLevel1 == offsetLevel1 && cachegbSuperJumpBoost[idx].OffsetLevel2 == offsetLevel2 && cachegbSuperJumpBoost[idx].OffsetLevel3 == offsetLevel3 && cachegbSuperJumpBoost[idx].OffsetLevel4 == offsetLevel4 && cachegbSuperJumpBoost[idx].OffsetBase == offsetBase && cachegbSuperJumpBoost[idx].ReferencePricePeriod == referencePricePeriod && cachegbSuperJumpBoost[idx].LineLevelsOffset == lineLevelsOffset && cachegbSuperJumpBoost[idx].ExtremeNeighborhood == extremeNeighborhood && cachegbSuperJumpBoost[idx].SignalCloseThreshold == signalCloseThreshold && cachegbSuperJumpBoost[idx].SignalQuantityPerZone == signalQuantityPerZone && cachegbSuperJumpBoost[idx].SignalSplit == signalSplit && cachegbSuperJumpBoost[idx].EqualsInput(input))
 						return cachegbSuperJumpBoost[idx];
-			return CacheIndicator<GreyBeard.KingPanaZilla.gbSuperJumpBoost>(new GreyBeard.KingPanaZilla.gbSuperJumpBoost(){ SensitiveModeEnabled = sensitiveModeEnabled, OffsetLevel1 = offsetLevel1, OffsetLevel2 = offsetLevel2, OffsetLevel3 = offsetLevel3, OffsetLevel4 = offsetLevel4, OffsetBase = offsetBase, ReferencePricePeriod = referencePricePeriod, LineLevelsOffset = lineLevelsOffset, ExtremeNeighborhood = extremeNeighborhood, SignalCloseThreshold = signalCloseThreshold, SignalQuantityPerZone = signalQuantityPerZone, SignalSplit = signalSplit }, input, ref cachegbSuperJumpBoost);
+			return CacheIndicator<GreyBeard.gbSuperJumpBoost>(new GreyBeard.gbSuperJumpBoost(){ SensitiveModeEnabled = sensitiveModeEnabled, OffsetLevel1 = offsetLevel1, OffsetLevel2 = offsetLevel2, OffsetLevel3 = offsetLevel3, OffsetLevel4 = offsetLevel4, OffsetBase = offsetBase, ReferencePricePeriod = referencePricePeriod, LineLevelsOffset = lineLevelsOffset, ExtremeNeighborhood = extremeNeighborhood, SignalCloseThreshold = signalCloseThreshold, SignalQuantityPerZone = signalQuantityPerZone, SignalSplit = signalSplit }, input, ref cachegbSuperJumpBoost);
 		}
 	}
 }
@@ -2679,12 +2341,12 @@ namespace NinjaTrader.NinjaScript.MarketAnalyzerColumns
 {
 	public partial class MarketAnalyzerColumn : MarketAnalyzerColumnBase
 	{
-		public Indicators.GreyBeard.KingPanaZilla.gbSuperJumpBoost gbSuperJumpBoost(bool sensitiveModeEnabled, double offsetLevel1, double offsetLevel2, double offsetLevel3, double offsetLevel4, double offsetBase, int referencePricePeriod, int lineLevelsOffset, int extremeNeighborhood, int signalCloseThreshold, int signalQuantityPerZone, int signalSplit)
+		public Indicators.GreyBeard.gbSuperJumpBoost gbSuperJumpBoost(bool sensitiveModeEnabled, double offsetLevel1, double offsetLevel2, double offsetLevel3, double offsetLevel4, double offsetBase, int referencePricePeriod, int lineLevelsOffset, int extremeNeighborhood, int signalCloseThreshold, int signalQuantityPerZone, int signalSplit)
 		{
 			return indicator.gbSuperJumpBoost(Input, sensitiveModeEnabled, offsetLevel1, offsetLevel2, offsetLevel3, offsetLevel4, offsetBase, referencePricePeriod, lineLevelsOffset, extremeNeighborhood, signalCloseThreshold, signalQuantityPerZone, signalSplit);
 		}
 
-		public Indicators.GreyBeard.KingPanaZilla.gbSuperJumpBoost gbSuperJumpBoost(ISeries<double> input , bool sensitiveModeEnabled, double offsetLevel1, double offsetLevel2, double offsetLevel3, double offsetLevel4, double offsetBase, int referencePricePeriod, int lineLevelsOffset, int extremeNeighborhood, int signalCloseThreshold, int signalQuantityPerZone, int signalSplit)
+		public Indicators.GreyBeard.gbSuperJumpBoost gbSuperJumpBoost(ISeries<double> input , bool sensitiveModeEnabled, double offsetLevel1, double offsetLevel2, double offsetLevel3, double offsetLevel4, double offsetBase, int referencePricePeriod, int lineLevelsOffset, int extremeNeighborhood, int signalCloseThreshold, int signalQuantityPerZone, int signalSplit)
 		{
 			return indicator.gbSuperJumpBoost(input, sensitiveModeEnabled, offsetLevel1, offsetLevel2, offsetLevel3, offsetLevel4, offsetBase, referencePricePeriod, lineLevelsOffset, extremeNeighborhood, signalCloseThreshold, signalQuantityPerZone, signalSplit);
 		}
@@ -2695,12 +2357,12 @@ namespace NinjaTrader.NinjaScript.Strategies
 {
 	public partial class Strategy : NinjaTrader.Gui.NinjaScript.StrategyRenderBase
 	{
-		public Indicators.GreyBeard.KingPanaZilla.gbSuperJumpBoost gbSuperJumpBoost(bool sensitiveModeEnabled, double offsetLevel1, double offsetLevel2, double offsetLevel3, double offsetLevel4, double offsetBase, int referencePricePeriod, int lineLevelsOffset, int extremeNeighborhood, int signalCloseThreshold, int signalQuantityPerZone, int signalSplit)
+		public Indicators.GreyBeard.gbSuperJumpBoost gbSuperJumpBoost(bool sensitiveModeEnabled, double offsetLevel1, double offsetLevel2, double offsetLevel3, double offsetLevel4, double offsetBase, int referencePricePeriod, int lineLevelsOffset, int extremeNeighborhood, int signalCloseThreshold, int signalQuantityPerZone, int signalSplit)
 		{
 			return indicator.gbSuperJumpBoost(Input, sensitiveModeEnabled, offsetLevel1, offsetLevel2, offsetLevel3, offsetLevel4, offsetBase, referencePricePeriod, lineLevelsOffset, extremeNeighborhood, signalCloseThreshold, signalQuantityPerZone, signalSplit);
 		}
 
-		public Indicators.GreyBeard.KingPanaZilla.gbSuperJumpBoost gbSuperJumpBoost(ISeries<double> input , bool sensitiveModeEnabled, double offsetLevel1, double offsetLevel2, double offsetLevel3, double offsetLevel4, double offsetBase, int referencePricePeriod, int lineLevelsOffset, int extremeNeighborhood, int signalCloseThreshold, int signalQuantityPerZone, int signalSplit)
+		public Indicators.GreyBeard.gbSuperJumpBoost gbSuperJumpBoost(ISeries<double> input , bool sensitiveModeEnabled, double offsetLevel1, double offsetLevel2, double offsetLevel3, double offsetLevel4, double offsetBase, int referencePricePeriod, int lineLevelsOffset, int extremeNeighborhood, int signalCloseThreshold, int signalQuantityPerZone, int signalSplit)
 		{
 			return indicator.gbSuperJumpBoost(input, sensitiveModeEnabled, offsetLevel1, offsetLevel2, offsetLevel3, offsetLevel4, offsetBase, referencePricePeriod, lineLevelsOffset, extremeNeighborhood, signalCloseThreshold, signalQuantityPerZone, signalSplit);
 		}

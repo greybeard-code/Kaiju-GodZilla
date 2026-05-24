@@ -27,13 +27,25 @@ using TextAlignment = SharpDX.DirectWrite.TextAlignment;
 using FlowDirection = System.Windows.FlowDirection;
 #endregion
 
-namespace NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla
+namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 {
-[CategoryOrder("Graphics", 1000020)]
-[CategoryOrder("Gradient", 1000030)]
+public enum gbBarStatus_CountMode
+{
+	CountUp,
+	CountDown
+}
+
+public enum gbBarStatus_PositionAlignment
+{
+	Top,
+	Bottom
+}
+
 [CategoryOrder("Developer", 0)]
-[CategoryOrder("Special", 1000040)]
-[CategoryOrder("General", 1000010)]
+[CategoryOrder("General",   1000010)]
+[CategoryOrder("Graphics",  1000020)]
+[CategoryOrder("Gradient",  1000030)]
+[CategoryOrder("Special",   1000040)]
 public class gbBarStatus : Indicator
 {
 	private class BrushManager
@@ -153,6 +165,8 @@ public class gbBarStatus : Indicator
 
 	private string indicatorName = "Bar Status";
 
+	private const string indicatorNameFull = "Bar Status by GreyBeard";
+
 	private bool isCharting;
 
 	private bool centerMenuAdded;
@@ -196,11 +210,11 @@ public class gbBarStatus : Indicator
 	[Display(Name = "Author",  Order = 0,  GroupName = "Developer")]
 	public string Author  => "GreyBeard";
 
-	[Display(Name = "Version", Order = 1,  GroupName = "Developer")]
-	public string Version => "1.0";
+	[Display(Name = "Website", Order = 5,  GroupName = "Developer")]
+	public string Website => "https://greybeardconsulting.net/";
 
-	[Display(Name = "Update", Order = 10, GroupName = "Developer")]
-	public string Update => "28 Jun 2023";
+	[Display(Name = "Version", Order = 10, GroupName = "Developer")]
+	public string Version => "1.1";
 
 	[Display(Name = "Count Mode", Order = 0, GroupName = "General")]
 	public gbBarStatus_CountMode CountMode { get; set; }
@@ -447,7 +461,7 @@ public class gbBarStatus : Indicator
 		switch (State)
 		{
 			case State.SetDefaults:
-				Description = string.Empty;
+				Description = "Displays bar count and session statistics on chart.";
 				Name = prefix;
 				Calculate = Calculate.OnEachTick;
 				IsOverlay = true;
@@ -1191,37 +1205,25 @@ public class gbBarStatus : Indicator
 }
 }
 
-public enum gbBarStatus_CountMode
-{
-	CountUp,
-	CountDown
-}
-
-public enum gbBarStatus_PositionAlignment
-{
-	Top,
-	Bottom
-}
-
 #region NinjaScript generated code. Neither change nor remove.
 
 namespace NinjaTrader.NinjaScript.Indicators
 {
 	public partial class Indicator : NinjaTrader.Gui.NinjaScript.IndicatorRenderBase
 	{
-		private GreyBeard.KingPanaZilla.gbBarStatus[] cachegbBarStatus;
-		public GreyBeard.KingPanaZilla.gbBarStatus gbBarStatus(int boundOffset)
+		private GreyBeard.gbBarStatus[] cachegbBarStatus;
+		public GreyBeard.gbBarStatus gbBarStatus(int boundOffset)
 		{
 			return gbBarStatus(Input, boundOffset);
 		}
 
-		public GreyBeard.KingPanaZilla.gbBarStatus gbBarStatus(ISeries<double> input, int boundOffset)
+		public GreyBeard.gbBarStatus gbBarStatus(ISeries<double> input, int boundOffset)
 		{
 			if (cachegbBarStatus != null)
 				for (int idx = 0; idx < cachegbBarStatus.Length; idx++)
 					if (cachegbBarStatus[idx] != null && cachegbBarStatus[idx].BoundOffset == boundOffset && cachegbBarStatus[idx].EqualsInput(input))
 						return cachegbBarStatus[idx];
-			return CacheIndicator<GreyBeard.KingPanaZilla.gbBarStatus>(new GreyBeard.KingPanaZilla.gbBarStatus(){ BoundOffset = boundOffset }, input, ref cachegbBarStatus);
+			return CacheIndicator<GreyBeard.gbBarStatus>(new GreyBeard.gbBarStatus(){ BoundOffset = boundOffset }, input, ref cachegbBarStatus);
 		}
 	}
 }
@@ -1230,12 +1232,12 @@ namespace NinjaTrader.NinjaScript.MarketAnalyzerColumns
 {
 	public partial class MarketAnalyzerColumn : MarketAnalyzerColumnBase
 	{
-		public Indicators.GreyBeard.KingPanaZilla.gbBarStatus gbBarStatus(int boundOffset)
+		public Indicators.GreyBeard.gbBarStatus gbBarStatus(int boundOffset)
 		{
 			return indicator.gbBarStatus(Input, boundOffset);
 		}
 
-		public Indicators.GreyBeard.KingPanaZilla.gbBarStatus gbBarStatus(ISeries<double> input , int boundOffset)
+		public Indicators.GreyBeard.gbBarStatus gbBarStatus(ISeries<double> input , int boundOffset)
 		{
 			return indicator.gbBarStatus(input, boundOffset);
 		}
@@ -1246,12 +1248,12 @@ namespace NinjaTrader.NinjaScript.Strategies
 {
 	public partial class Strategy : NinjaTrader.Gui.NinjaScript.StrategyRenderBase
 	{
-		public Indicators.GreyBeard.KingPanaZilla.gbBarStatus gbBarStatus(int boundOffset)
+		public Indicators.GreyBeard.gbBarStatus gbBarStatus(int boundOffset)
 		{
 			return indicator.gbBarStatus(Input, boundOffset);
 		}
 
-		public Indicators.GreyBeard.KingPanaZilla.gbBarStatus gbBarStatus(ISeries<double> input , int boundOffset)
+		public Indicators.GreyBeard.gbBarStatus gbBarStatus(ISeries<double> input , int boundOffset)
 		{
 			return indicator.gbBarStatus(input, boundOffset);
 		}

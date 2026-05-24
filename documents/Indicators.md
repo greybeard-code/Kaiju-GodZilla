@@ -1,6 +1,6 @@
 # GodZilla Indicators — Technical Reference
 
-All six indicators share a common namespace (`NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla`), a consistent `Signal_Trade` series contract, and are consumed directly by GodZillaKilla and GodZuki via their factory methods at `State.DataLoaded`.
+All six indicators share a common namespace (`NinjaTrader.NinjaScript.Indicators.GreyBeard`), a consistent `Signal_Trade` series contract, and are consumed directly by GodZillaKilla and GodZuki via their factory methods at `State.DataLoaded`.
 
 **Signal contract:** All `Signal_Trade` series output integer values. Positive = bullish, negative = bearish, 0 = no signal. The magnitude encodes signal type (e.g., 1 = Return, 2 = Breakout for KO). GodZillaKilla and GodZuki use configurable comparison operators to select which magnitude(s) to act on.
 

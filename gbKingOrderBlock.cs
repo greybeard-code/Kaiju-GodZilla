@@ -8,7 +8,6 @@ using System.Linq;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Threading;
 using System.Xml.Serialization;
@@ -25,7 +24,7 @@ using SharpDX;
 using SharpDX.Direct2D1;
 #endregion
 
-namespace NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla
+namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 {
 
 public enum gbKingOrderBlockTextPosition
@@ -84,14 +83,13 @@ public class gbKingOrderBlock_SoundConverter : TypeConverter
 	}
 }
 
-[CategoryOrder("Developer",  0)]
+[CategoryOrder("Developer", 0)]
+[CategoryOrder("General",   1000010)]
+[CategoryOrder("Graphics",  1000020)]
+[CategoryOrder("Gradient",  1000030)]
 [CategoryOrder("Alerts",    1000040)]
 [CategoryOrder("Special",   1000060)]
-[CategoryOrder("Graphics",  1000020)]
 [CategoryOrder("Critical",  1000070)]
-[CategoryOrder("General",   1000010)]
-[CategoryOrder("Toggle",    1000050)]
-[CategoryOrder("Gradient",  1000030)]
 public class gbKingOrderBlock : Indicator
 {
 	private class MarkerInfo
@@ -404,8 +402,6 @@ public class gbKingOrderBlock : Indicator
 		Breakout
 	}
 
-	private gbKingOrderBlockTextPosition togglePositionAlignment;
-
 	private const int defaultMargin = 5;
 
 	private const string toolTipSpace = "  ";
@@ -514,10 +510,6 @@ public class gbKingOrderBlock : Indicator
 
 	private Window alertWindow;
 	private bool alertWindowClosed;
-
-	private Grid toggle;
-	private System.Windows.Controls.Button toggleButton;
-	private Thumb toggleDrag;
 
 	private const string prefix = "gbKingOrderBlock";
 
@@ -758,8 +750,11 @@ public class gbKingOrderBlock : Indicator
 	[Display(Name = "Author",    Order = 0,   GroupName = "Developer")]
 	public string Author  => "GreyBeard";
 
-	[Display(Name = "Version",   Order = 1,   GroupName = "Developer")]
-	public string Version => "1.0";
+	[Display(Name = "Website",   Order = 5,   GroupName = "Developer")]
+	public string Website => "https://greybeardconsulting.net/";
+
+	[Display(Name = "Version",   Order = 10,  GroupName = "Developer")]
+	public string Version => "1.1";
 
 	[Display(Name = "Screen DPI", Order = 100, GroupName = "General")]
 	[Range(99, 500)]
@@ -1215,136 +1210,6 @@ public class gbKingOrderBlock : Indicator
 	[NinjaScriptProperty]
 	public int SignalTradeSplitBars { get; set; }
 
-	[Display(Name = "Enabled", Order = 0, GroupName = "Toggle")]
-	public bool ToggleEnabled { get; set; }
-
-	[Display(Name = "Background: On", Order = 10, GroupName = "Toggle")]
-	[XmlIgnore]
-	public System.Windows.Media.Brush ToggleBackBrushOn { get; set; }
-
-	[Browsable(false)]
-	public string ToggleBackBrushOnSerialize
-	{
-		get
-		{
-			return Serialize.BrushToString(ToggleBackBrushOn);
-		}
-		set
-		{
-			ToggleBackBrushOn = Serialize.StringToBrush(value);
-		}
-	}
-
-	[XmlIgnore]
-	[Display(Name = "Background: Off", Order = 12, GroupName = "Toggle")]
-	public System.Windows.Media.Brush ToggleBackBrushOff { get; set; }
-
-	[Browsable(false)]
-	public string ToggleBackBrushOffSerialize
-	{
-		get
-		{
-			return Serialize.BrushToString(ToggleBackBrushOff);
-		}
-		set
-		{
-			ToggleBackBrushOff = Serialize.StringToBrush(value);
-		}
-	}
-
-	[Display(Name = "Text: String", Order = 20, GroupName = "Toggle")]
-	public string ToggleTextString { get; set; }
-
-	[XmlIgnore]
-	[Display(Name = "Text: Color", Order = 22, GroupName = "Toggle")]
-	public System.Windows.Media.Brush ToggleTextBrush { get; set; }
-
-	[Browsable(false)]
-	public string ToggleTextBrushSerialize
-	{
-		get
-		{
-			return Serialize.BrushToString(ToggleTextBrush);
-		}
-		set
-		{
-			ToggleTextBrush = Serialize.StringToBrush(value);
-		}
-	}
-
-	[Range(1, int.MaxValue)]
-	[Display(Name = "Text: Size", Order = 24, GroupName = "Toggle")]
-	public int ToggleTextSize { get; set; }
-
-	[Display(Name = "Drag Bar: Color", Order = 30, GroupName = "Toggle")]
-	[XmlIgnore]
-	public System.Windows.Media.Brush ToggleDragBrush { get; set; }
-
-	[Browsable(false)]
-	public string ToggleDragBrushSerialize
-	{
-		get
-		{
-			return Serialize.BrushToString(ToggleDragBrush);
-		}
-		set
-		{
-			ToggleDragBrush = Serialize.StringToBrush(value);
-		}
-	}
-
-	[Display(Name = "Position: Alignment", Order = 40, GroupName = "Toggle")]
-	public gbKingOrderBlockTextPosition TogglePositionAlignment
-	{
-		get
-		{
-			return togglePositionAlignment;
-		}
-		set
-		{
-			if (value == gbKingOrderBlockTextPosition.TopLeft)
-			{
-				double togglePositionMarginTop = (TogglePositionMarginLeft = 5.0);
-				TogglePositionMarginTop = togglePositionMarginTop;
-			}
-			if (value == gbKingOrderBlockTextPosition.TopRight)
-			{
-				double togglePositionMarginTop = (TogglePositionMarginRight = 5.0);
-				TogglePositionMarginTop = togglePositionMarginTop;
-			}
-			if (value == gbKingOrderBlockTextPosition.BottomRight)
-			{
-				double togglePositionMarginTop = (TogglePositionMarginRight = 5.0);
-				TogglePositionMarginBottom = togglePositionMarginTop;
-			}
-			if (value == gbKingOrderBlockTextPosition.BottomLeft)
-			{
-				double togglePositionMarginTop = (TogglePositionMarginLeft = 5.0);
-				TogglePositionMarginBottom = togglePositionMarginTop;
-			}
-			if (value == gbKingOrderBlockTextPosition.Center)
-			{
-				double num5 = (TogglePositionMarginBottom = 5.0);
-				double num7 = (TogglePositionMarginRight = num5);
-				double togglePositionMarginTop = (TogglePositionMarginTop = num7);
-				TogglePositionMarginLeft = togglePositionMarginTop;
-			}
-			togglePositionAlignment = value;
-		}
-	}
-
-	[Display(Name = "Position: Margin Left", Order = 42, GroupName = "Toggle")]
-	public double TogglePositionMarginLeft { get; set; }
-
-	[Display(Name = "Position: Margin Top", Order = 44, GroupName = "Toggle")]
-	public double TogglePositionMarginTop { get; set; }
-
-	[Display(Name = "Position: Margin Right", Order = 46, GroupName = "Toggle")]
-	public double TogglePositionMarginRight { get; set; }
-
-	[Display(Name = "Position: Margin Bottom", Order = 48, GroupName = "Toggle")]
-	public double TogglePositionMarginBottom { get; set; }
-
 	[Display(Name = "Z Order", Order = 0, GroupName = "Special")]
 	public int IndicatorZOrder { get; set; }
 
@@ -1409,7 +1274,7 @@ public class gbKingOrderBlock : Indicator
 		{
 			if (base.State == State.SetDefaults)
 			{
-				base.Description = string.Empty;
+				base.Description = "Identifies order blocks with BOS/ChoCh market structure.";
 				base.Name = "gbKingOrderBlock";
 				base.Calculate = Calculate.OnBarClose;
 				base.IsOverlay = true;
@@ -1513,18 +1378,6 @@ public class gbKingOrderBlock : Indicator
 				OrderBlockAge = 500;
 				SignalTradeQuantityPerOrderBlock = 3;
 				SignalTradeSplitBars = 6;
-				ToggleEnabled = true;
-				ToggleBackBrushOn = Brushes.DodgerBlue;
-				ToggleBackBrushOff = Brushes.Silver;
-				ToggleTextString = "King Order Block";
-				ToggleTextBrush = Brushes.White;
-				ToggleTextSize = 10;
-				ToggleDragBrush = Brushes.LimeGreen;
-				TogglePositionAlignment = gbKingOrderBlockTextPosition.TopLeft;
-				TogglePositionMarginLeft = 5.0;
-				TogglePositionMarginTop = 5.0;
-				TogglePositionMarginRight = 5.0;
-				TogglePositionMarginBottom = 5.0;
 				IndicatorZOrder = -10;
 				UserNote = "instrument (period)";
 				AddPlot(Brushes.Transparent, "Signal Trade");
@@ -1616,46 +1469,6 @@ public class gbKingOrderBlock : Indicator
 						rearmTimer.Interval = TimeSpan.FromMilliseconds(100.0);
 						rearmTimer.Tick += OnRearmTimerTick;
 					}
-					if (ToggleEnabled && toggle == null)
-					{
-						toggle = new Grid();
-						toggle.HorizontalAlignment = (TogglePositionAlignment == gbKingOrderBlockTextPosition.TopLeft || TogglePositionAlignment == gbKingOrderBlockTextPosition.BottomLeft) ? HorizontalAlignment.Left : ((TogglePositionAlignment == gbKingOrderBlockTextPosition.Center) ? HorizontalAlignment.Center : HorizontalAlignment.Right);
-						toggle.VerticalAlignment = (TogglePositionAlignment == gbKingOrderBlockTextPosition.TopLeft || TogglePositionAlignment == gbKingOrderBlockTextPosition.TopRight) ? VerticalAlignment.Top : ((TogglePositionAlignment == gbKingOrderBlockTextPosition.Center) ? VerticalAlignment.Center : VerticalAlignment.Bottom);
-						toggle.Margin = new Thickness(TogglePositionMarginLeft, TogglePositionMarginTop, TogglePositionMarginRight, TogglePositionMarginBottom);
-						toggle.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-						toggle.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(6) });
-
-						toggleButton = new System.Windows.Controls.Button
-						{
-							Content = ToggleTextString,
-							Foreground = ToggleTextBrush,
-							FontSize = ToggleTextSize,
-							Background = SwitchedOn ? ToggleBackBrushOn : ToggleBackBrushOff,
-							BorderThickness = new Thickness(0),
-							Padding = new Thickness(6, 2, 6, 2),
-							Cursor = System.Windows.Input.Cursors.Hand
-						};
-						Grid.SetColumn(toggleButton, 0);
-						toggle.Children.Add(toggleButton);
-
-						toggleDrag = new Thumb
-						{
-							Width = 6,
-							Background = ToggleDragBrush,
-							Cursor = System.Windows.Input.Cursors.SizeAll,
-							Opacity = 0.8
-						};
-						var rectFactory = new FrameworkElementFactory(typeof(System.Windows.Shapes.Rectangle));
-						rectFactory.SetValue(System.Windows.Shapes.Shape.FillProperty, ToggleDragBrush);
-						toggleDrag.Template = new ControlTemplate(typeof(Thumb)) { VisualTree = rectFactory };
-						Grid.SetColumn(toggleDrag, 1);
-						toggle.Children.Add(toggleDrag);
-
-						toggleButton.Click += OnToggleClick;
-						toggleDrag.DragDelta += OnToggleDrag;
-						if (base.ChartControl.Parent is Grid chartGrid)
-							chartGrid.Children.Add(toggle);
-					}
 				});
 			}
 			else
@@ -1668,18 +1481,6 @@ public class gbKingOrderBlock : Indicator
 				{
 					base.ChartControl.Dispatcher.InvokeAsync(delegate
 					{
-						if (toggle != null)
-						{
-							if (toggleDrag != null)
-								toggleDrag.DragDelta -= OnToggleDrag;
-							if (toggleButton != null)
-								toggleButton.Click -= OnToggleClick;
-							if (base.ChartControl.Parent is Grid chartGrid)
-								chartGrid.Children.Remove(toggle);
-							toggle = null;
-							toggleButton = null;
-							toggleDrag = null;
-						}
 						if (alertWindow != null)
 						{
 							alertWindow.Close();
@@ -3007,65 +2808,6 @@ public class gbKingOrderBlock : Indicator
 		}
 	}
 
-	private void OnToggleDrag(object sender, DragDeltaEventArgs e)
-	{
-		TriggerCustomEvent(delegate
-		{
-			try
-			{
-				if (isCharting)
-				{
-					base.ChartControl.Dispatcher.InvokeAsync(delegate
-					{
-						toggle.Margin = new Thickness(
-							toggle.Margin.Left + e.HorizontalChange,
-							toggle.Margin.Top + e.VerticalChange,
-							toggle.Margin.Right - e.HorizontalChange,
-							toggle.Margin.Bottom - e.VerticalChange);
-						TogglePositionMarginLeft = toggle.Margin.Left;
-						TogglePositionMarginTop = toggle.Margin.Top;
-						TogglePositionMarginRight = toggle.Margin.Right;
-						TogglePositionMarginBottom = toggle.Margin.Bottom;
-					});
-				}
-			}
-			catch (Exception exception)
-			{
-				Print(exception.ToString());
-			}
-		}, e);
-	}
-
-	private void OnToggleClick(object sender, RoutedEventArgs e)
-	{
-		TriggerCustomEvent(delegate
-		{
-			try
-			{
-				if (isCharting)
-				{
-					base.ChartControl.Dispatcher.InvokeAsync(delegate
-					{
-						SwitchedOn = !SwitchedOn;
-						toggleButton.Background = SwitchedOn ? ToggleBackBrushOn : ToggleBackBrushOff;
-						foreach (IDrawingTool drawObject in base.DrawObjects)
-						{
-							if (drawObject.Tag.Contains("gbKingOrderBlock"))
-							{
-								drawObject.IsVisible = SwitchedOn;
-							}
-						}
-						base.ChartControl.InvalidateVisual();
-					});
-				}
-			}
-			catch (Exception exception)
-			{
-				Print(exception.ToString());
-			}
-		}, e);
-	}
-
 	private void PrintMarker(bool isBullish, SignalType signalType)
 	{
 		if (isCharting && MarkerEnabled && base.CurrentBars[0] >= base.BarsRequiredToPlot)
@@ -3178,7 +2920,7 @@ public class gbKingOrderBlock : Indicator
 		string text3 = "King Order Block" + $": {arg3} alert on {arg2} at {arg}";
 		string popupMessage = string.Format("There has been " + text2 + " {0} signal.\n\nAlert chart: {1}.\nAlert time: {2}", arg3, arg2, text);
 		string text4 = "\n_______________________\n\n";
-		string text5 = popupMessage + text4 + "King Order Block by GreyBeard\nWebsite: http://greybeard.com";
+		string text5 = popupMessage + text4 + "King Order Block by GreyBeard\nWebsite: https://greybeardconsulting.net/";
 		if (PopupEnabled && isCharting)
 		{
 			base.ChartControl.Dispatcher.InvokeAsync(delegate
@@ -3297,19 +3039,19 @@ namespace NinjaTrader.NinjaScript.Indicators
 {
 	public partial class Indicator : NinjaTrader.Gui.NinjaScript.IndicatorRenderBase
 	{
-		private GreyBeard.KingPanaZilla.gbKingOrderBlock[] cachegbKingOrderBlock;
-		public GreyBeard.KingPanaZilla.gbKingOrderBlock gbKingOrderBlock(int swingPointNeighborhood, int imbalanceQualifying, int orderBlockFindingBosChochPeriod, int orderBlockAge, int orderBlocksSameDirectionOffset, int orderBlocksDifferenceDirectionOffset, int signalTradeQuantityPerOrderBlock, int signalTradeSplitBars)
+		private GreyBeard.gbKingOrderBlock[] cachegbKingOrderBlock;
+		public GreyBeard.gbKingOrderBlock gbKingOrderBlock(int swingPointNeighborhood, int imbalanceQualifying, int orderBlockFindingBosChochPeriod, int orderBlockAge, int orderBlocksSameDirectionOffset, int orderBlocksDifferenceDirectionOffset, int signalTradeQuantityPerOrderBlock, int signalTradeSplitBars)
 		{
 			return gbKingOrderBlock(Input, swingPointNeighborhood, imbalanceQualifying, orderBlockFindingBosChochPeriod, orderBlockAge, orderBlocksSameDirectionOffset, orderBlocksDifferenceDirectionOffset, signalTradeQuantityPerOrderBlock, signalTradeSplitBars);
 		}
 
-		public GreyBeard.KingPanaZilla.gbKingOrderBlock gbKingOrderBlock(ISeries<double> input, int swingPointNeighborhood, int imbalanceQualifying, int orderBlockFindingBosChochPeriod, int orderBlockAge, int orderBlocksSameDirectionOffset, int orderBlocksDifferenceDirectionOffset, int signalTradeQuantityPerOrderBlock, int signalTradeSplitBars)
+		public GreyBeard.gbKingOrderBlock gbKingOrderBlock(ISeries<double> input, int swingPointNeighborhood, int imbalanceQualifying, int orderBlockFindingBosChochPeriod, int orderBlockAge, int orderBlocksSameDirectionOffset, int orderBlocksDifferenceDirectionOffset, int signalTradeQuantityPerOrderBlock, int signalTradeSplitBars)
 		{
 			if (cachegbKingOrderBlock != null)
 				for (int idx = 0; idx < cachegbKingOrderBlock.Length; idx++)
 					if (cachegbKingOrderBlock[idx] != null && cachegbKingOrderBlock[idx].SwingPointNeighborhood == swingPointNeighborhood && cachegbKingOrderBlock[idx].ImbalanceQualifying == imbalanceQualifying && cachegbKingOrderBlock[idx].OrderBlockFindingBosChochPeriod == orderBlockFindingBosChochPeriod && cachegbKingOrderBlock[idx].OrderBlockAge == orderBlockAge && cachegbKingOrderBlock[idx].OrderBlocksSameDirectionOffset == orderBlocksSameDirectionOffset && cachegbKingOrderBlock[idx].OrderBlocksDifferenceDirectionOffset == orderBlocksDifferenceDirectionOffset && cachegbKingOrderBlock[idx].SignalTradeQuantityPerOrderBlock == signalTradeQuantityPerOrderBlock && cachegbKingOrderBlock[idx].SignalTradeSplitBars == signalTradeSplitBars && cachegbKingOrderBlock[idx].EqualsInput(input))
 						return cachegbKingOrderBlock[idx];
-			return CacheIndicator<GreyBeard.KingPanaZilla.gbKingOrderBlock>(new GreyBeard.KingPanaZilla.gbKingOrderBlock(){ SwingPointNeighborhood = swingPointNeighborhood, ImbalanceQualifying = imbalanceQualifying, OrderBlockFindingBosChochPeriod = orderBlockFindingBosChochPeriod, OrderBlockAge = orderBlockAge, OrderBlocksSameDirectionOffset = orderBlocksSameDirectionOffset, OrderBlocksDifferenceDirectionOffset = orderBlocksDifferenceDirectionOffset, SignalTradeQuantityPerOrderBlock = signalTradeQuantityPerOrderBlock, SignalTradeSplitBars = signalTradeSplitBars }, input, ref cachegbKingOrderBlock);
+			return CacheIndicator<GreyBeard.gbKingOrderBlock>(new GreyBeard.gbKingOrderBlock(){ SwingPointNeighborhood = swingPointNeighborhood, ImbalanceQualifying = imbalanceQualifying, OrderBlockFindingBosChochPeriod = orderBlockFindingBosChochPeriod, OrderBlockAge = orderBlockAge, OrderBlocksSameDirectionOffset = orderBlocksSameDirectionOffset, OrderBlocksDifferenceDirectionOffset = orderBlocksDifferenceDirectionOffset, SignalTradeQuantityPerOrderBlock = signalTradeQuantityPerOrderBlock, SignalTradeSplitBars = signalTradeSplitBars }, input, ref cachegbKingOrderBlock);
 		}
 	}
 }
@@ -3318,12 +3060,12 @@ namespace NinjaTrader.NinjaScript.MarketAnalyzerColumns
 {
 	public partial class MarketAnalyzerColumn : MarketAnalyzerColumnBase
 	{
-		public Indicators.GreyBeard.KingPanaZilla.gbKingOrderBlock gbKingOrderBlock(int swingPointNeighborhood, int imbalanceQualifying, int orderBlockFindingBosChochPeriod, int orderBlockAge, int orderBlocksSameDirectionOffset, int orderBlocksDifferenceDirectionOffset, int signalTradeQuantityPerOrderBlock, int signalTradeSplitBars)
+		public Indicators.GreyBeard.gbKingOrderBlock gbKingOrderBlock(int swingPointNeighborhood, int imbalanceQualifying, int orderBlockFindingBosChochPeriod, int orderBlockAge, int orderBlocksSameDirectionOffset, int orderBlocksDifferenceDirectionOffset, int signalTradeQuantityPerOrderBlock, int signalTradeSplitBars)
 		{
 			return indicator.gbKingOrderBlock(Input, swingPointNeighborhood, imbalanceQualifying, orderBlockFindingBosChochPeriod, orderBlockAge, orderBlocksSameDirectionOffset, orderBlocksDifferenceDirectionOffset, signalTradeQuantityPerOrderBlock, signalTradeSplitBars);
 		}
 
-		public Indicators.GreyBeard.KingPanaZilla.gbKingOrderBlock gbKingOrderBlock(ISeries<double> input , int swingPointNeighborhood, int imbalanceQualifying, int orderBlockFindingBosChochPeriod, int orderBlockAge, int orderBlocksSameDirectionOffset, int orderBlocksDifferenceDirectionOffset, int signalTradeQuantityPerOrderBlock, int signalTradeSplitBars)
+		public Indicators.GreyBeard.gbKingOrderBlock gbKingOrderBlock(ISeries<double> input , int swingPointNeighborhood, int imbalanceQualifying, int orderBlockFindingBosChochPeriod, int orderBlockAge, int orderBlocksSameDirectionOffset, int orderBlocksDifferenceDirectionOffset, int signalTradeQuantityPerOrderBlock, int signalTradeSplitBars)
 		{
 			return indicator.gbKingOrderBlock(input, swingPointNeighborhood, imbalanceQualifying, orderBlockFindingBosChochPeriod, orderBlockAge, orderBlocksSameDirectionOffset, orderBlocksDifferenceDirectionOffset, signalTradeQuantityPerOrderBlock, signalTradeSplitBars);
 		}
@@ -3334,12 +3076,12 @@ namespace NinjaTrader.NinjaScript.Strategies
 {
 	public partial class Strategy : NinjaTrader.Gui.NinjaScript.StrategyRenderBase
 	{
-		public Indicators.GreyBeard.KingPanaZilla.gbKingOrderBlock gbKingOrderBlock(int swingPointNeighborhood, int imbalanceQualifying, int orderBlockFindingBosChochPeriod, int orderBlockAge, int orderBlocksSameDirectionOffset, int orderBlocksDifferenceDirectionOffset, int signalTradeQuantityPerOrderBlock, int signalTradeSplitBars)
+		public Indicators.GreyBeard.gbKingOrderBlock gbKingOrderBlock(int swingPointNeighborhood, int imbalanceQualifying, int orderBlockFindingBosChochPeriod, int orderBlockAge, int orderBlocksSameDirectionOffset, int orderBlocksDifferenceDirectionOffset, int signalTradeQuantityPerOrderBlock, int signalTradeSplitBars)
 		{
 			return indicator.gbKingOrderBlock(Input, swingPointNeighborhood, imbalanceQualifying, orderBlockFindingBosChochPeriod, orderBlockAge, orderBlocksSameDirectionOffset, orderBlocksDifferenceDirectionOffset, signalTradeQuantityPerOrderBlock, signalTradeSplitBars);
 		}
 
-		public Indicators.GreyBeard.KingPanaZilla.gbKingOrderBlock gbKingOrderBlock(ISeries<double> input , int swingPointNeighborhood, int imbalanceQualifying, int orderBlockFindingBosChochPeriod, int orderBlockAge, int orderBlocksSameDirectionOffset, int orderBlocksDifferenceDirectionOffset, int signalTradeQuantityPerOrderBlock, int signalTradeSplitBars)
+		public Indicators.GreyBeard.gbKingOrderBlock gbKingOrderBlock(ISeries<double> input , int swingPointNeighborhood, int imbalanceQualifying, int orderBlockFindingBosChochPeriod, int orderBlockAge, int orderBlocksSameDirectionOffset, int orderBlocksDifferenceDirectionOffset, int signalTradeQuantityPerOrderBlock, int signalTradeSplitBars)
 		{
 			return indicator.gbKingOrderBlock(input, swingPointNeighborhood, imbalanceQualifying, orderBlockFindingBosChochPeriod, orderBlockAge, orderBlocksSameDirectionOffset, orderBlocksDifferenceDirectionOffset, signalTradeQuantityPerOrderBlock, signalTradeSplitBars);
 		}

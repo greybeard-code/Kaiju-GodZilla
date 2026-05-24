@@ -1,7 +1,7 @@
 # GodZuki — Signal Indicator
 
 **Version:** 1.0.3
-**Namespace:** `NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla`
+**Namespace:** `NinjaTrader.NinjaScript.Indicators.GreyBeard`
 
 GodZuki is the pure indicator version of GodZillaKilla. It reads the same six GodZilla Suite sub-indicators, evaluates the same confluence logic, applies the same EMA filter — but executes no trades. Use it to visually monitor signals on any chart, audit historical signal quality, trigger audio alerts, and log signal history to CSV.
 

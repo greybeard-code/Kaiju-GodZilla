@@ -13,35 +13,33 @@ using NinjaTrader.Gui;
 using NinjaTrader.Gui.Chart;
 using NinjaTrader.Gui.Tools;
 using NinjaTrader.NinjaScript.DrawingTools;
-using NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla;
 #endregion
 
-namespace NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla
+public enum gbNobleCloud_MAType
 {
-	public enum gb_MAType
-	{
-		DEMA,
-		EMA,
-		HMA,
-		LinReg,
-		SMA,
-		TEMA,
-		TMA,
-		VWMA,
-		WMA,
-		WilderMA,
-		ZLEMA
-	}
+	DEMA,
+	EMA,
+	HMA,
+	LinReg,
+	SMA,
+	TEMA,
+	TMA,
+	VWMA,
+	WMA,
+	WilderMA,
+	ZLEMA
+}
 
-	[CategoryOrder("General",    1000010)]
-	[CategoryOrder("Alerts",     1000040)]
-	[CategoryOrder("Graphics",   1000020)]
-	[CategoryOrder("Parameters", 1000005)]
-	[CategoryOrder("Critical",   1000070)]
+namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
+{
 	[CategoryOrder("Developer",  0)]
-	[CategoryOrder("Toggle",     1000050)]
-	[CategoryOrder("Special",    1000060)]
+	[CategoryOrder("Parameters", 1000005)]
+	[CategoryOrder("General",    1000010)]
+	[CategoryOrder("Graphics",   1000020)]
 	[CategoryOrder("Gradient",   1000030)]
+	[CategoryOrder("Alerts",     1000040)]
+	[CategoryOrder("Special",    1000060)]
+	[CategoryOrder("Critical",   1000070)]
 	public class gbNobleCloud : Indicator
 	{
 		// ── Alerts ────────────────────────────────────────────────────────────────
@@ -89,10 +87,13 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla
 		// Thanks DD!
 
 		[Display(Name = "Version", Order = 0, GroupName = "Developer")]
-		public string Version => "1.0.3";
+		public string Version => "1.1";
 
-		[Display(Name = "Author", Order = 5, GroupName = "Developer")]
+		[Display(Name = "Author", Order = 0, GroupName = "Developer")]
 		public string Author => "GreyBeard";
+
+		[Display(Name = "Website", Order = 5, GroupName = "Developer")]
+		public string Website => "https://greybeardconsulting.net/";
 
 		// ── General ───────────────────────────────────────────────────────────────
 
@@ -195,7 +196,7 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla
 
 		[NinjaScriptProperty]
 		[Display(Name = "Baseline: MA Type", Order = 20, GroupName = "Parameters")]
-		public gb_MAType BaselineMAType { get; set; }
+		public gbNobleCloud_MAType BaselineMAType { get; set; }
 
 		[Range(1, 2147483647)]
 		[NinjaScriptProperty]
@@ -208,7 +209,7 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla
 
 		[NinjaScriptProperty]
 		[Display(Name = "Baseline: Smoothing Method", Order = 23, GroupName = "Parameters")]
-		public gb_MAType BaselineSmoothingMethod { get; set; }
+		public gbNobleCloud_MAType BaselineSmoothingMethod { get; set; }
 
 		[Range(1, 2147483647)]
 		[NinjaScriptProperty]
@@ -217,7 +218,7 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla
 
 		[NinjaScriptProperty]
 		[Display(Name = "Kernel: MA Type", Order = 40, GroupName = "Parameters")]
-		public gb_MAType KernelMAType { get; set; }
+		public gbNobleCloud_MAType KernelMAType { get; set; }
 
 		[Range(1, 2147483647)]
 		[NinjaScriptProperty]
@@ -230,7 +231,7 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla
 
 		[NinjaScriptProperty]
 		[Display(Name = "Kernel: Smoothing Method", Order = 43, GroupName = "Parameters")]
-		public gb_MAType KernelSmoothingMethod { get; set; }
+		public gbNobleCloud_MAType KernelSmoothingMethod { get; set; }
 
 		[Range(1, 2147483647)]
 		[NinjaScriptProperty]
@@ -286,8 +287,23 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla
 			{
 				if (base.Parent is MarketAnalyzerColumnBase)
 					return base.DisplayName;
-				return "gbNoble Cloud";
+				return "Noble Cloud by GreyBeard" + GetUserNote();
 			}
+		}
+
+		private string GetUserNote()
+		{
+			string text = UserNote.Trim();
+			if (!string.IsNullOrWhiteSpace(text))
+			{
+				text = text.ToLower();
+				if (text.Contains("instrument") && Instrument != null)
+					text = text.Replace("instrument", Instrument.FullName);
+				if (text.Contains("period") && BarsPeriod != null)
+					text = text.Replace("period", ((object)BarsPeriod).ToString());
+				return " (" + text + ")";
+			}
+			return string.Empty;
 		}
 
 		// ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -298,7 +314,7 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla
 			{
 				if (base.State == State.SetDefaults)
 				{
-					base.Description                  = string.Empty;
+					base.Description                  = "Trend-following cloud indicator with baseline and kernel MAs.";
 					base.Name                         = "gbNobleCloud";
 					base.Calculate                    = Calculate.OnBarClose;
 					base.IsOverlay                    = true;
@@ -335,15 +351,15 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla
 					this.CloudOpacity          = 100;
 					this.Sensitivity           = 60.0;
 					this.Smoothness            = 1;
-					this.BaselineMAType        = gb_MAType.SMA;
+					this.BaselineMAType        = gbNobleCloud_MAType.SMA;
 					this.BaselinePeriod        = 60;
 					this.BaselineSmoothingEnabled = true;
-					this.BaselineSmoothingMethod  = gb_MAType.EMA;
+					this.BaselineSmoothingMethod  = gbNobleCloud_MAType.EMA;
 					this.BaselineSmoothingPeriod  = 60;
-					this.KernelMAType          = gb_MAType.SMA;
+					this.KernelMAType          = gbNobleCloud_MAType.SMA;
 					this.KernelPeriod          = 20;
 					this.KernelSmoothingEnabled   = true;
-					this.KernelSmoothingMethod    = gb_MAType.EMA;
+					this.KernelSmoothingMethod    = gbNobleCloud_MAType.EMA;
 					this.KernelSmoothingPeriod    = 5;
 					this.SignalSplit            = 5;
 					this.FilterEnabled         = true;
@@ -404,8 +420,8 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla
 				double stdDev = StdDev(base.Input, this.KernelPeriod)[0];
 				this.seriesUpperThresholdRaw[0]      = this.kernelSmoothed[0] + this.effectiveSensitivity * stdDev;
 				this.seriesLowerThresholdRaw[0]      = this.kernelSmoothed[0] - this.effectiveSensitivity * stdDev;
-				this.seriesUpperThresholdSmoothed[0] = this.thresholdSmoothingEnabled ? this.ComputeMAValue(this.seriesUpperThresholdRaw, gb_MAType.EMA, this.Smoothness) : this.seriesUpperThresholdRaw[0];
-				this.seriesLowerThresholdSmoothed[0] = this.thresholdSmoothingEnabled ? this.ComputeMAValue(this.seriesLowerThresholdRaw, gb_MAType.EMA, this.Smoothness) : this.seriesLowerThresholdRaw[0];
+				this.seriesUpperThresholdSmoothed[0] = this.thresholdSmoothingEnabled ? this.ComputeMAValue(this.seriesUpperThresholdRaw, gbNobleCloud_MAType.EMA, this.Smoothness) : this.seriesUpperThresholdRaw[0];
+				this.seriesLowerThresholdSmoothed[0] = this.thresholdSmoothingEnabled ? this.ComputeMAValue(this.seriesLowerThresholdRaw, gbNobleCloud_MAType.EMA, this.Smoothness) : this.seriesLowerThresholdRaw[0];
 				this.Baseline[0] = this.baselineSmoothed[0];
 
 				// Track baseline direction
@@ -573,34 +589,34 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla
 			return base.Instrument.MasterInstrument.FormatPrice(base.Instrument.MasterInstrument.RoundToTickSize(price), true);
 		}
 
-		private ISeries<double> GetMASeries(ISeries<double> input, gb_MAType maType, int period)
+		private ISeries<double> GetMASeries(ISeries<double> input, gbNobleCloud_MAType maType, int period)
 		{
 			if (period < 1) return null;
 			switch (maType)
 			{
-				case gb_MAType.DEMA:     return DEMA(input, period);
-				case gb_MAType.EMA:      return EMA(input, period);
-				case gb_MAType.HMA:      return HMA(input, period);
-				case gb_MAType.LinReg:   return LinReg(input, period);
-				case gb_MAType.SMA:      return SMA(input, period);
-				case gb_MAType.TEMA:     return TEMA(input, period);
-				case gb_MAType.TMA:      return TMA(input, period);
-				case gb_MAType.VWMA:     return VWMA(input, period);
-				case gb_MAType.WMA:      return WMA(input, period);
-				case gb_MAType.WilderMA: return EMA(input, 2 * period);
-				case gb_MAType.ZLEMA:    return ZLEMA(input, period);
+				case gbNobleCloud_MAType.DEMA:     return DEMA(input, period);
+				case gbNobleCloud_MAType.EMA:      return EMA(input, period);
+				case gbNobleCloud_MAType.HMA:      return HMA(input, period);
+				case gbNobleCloud_MAType.LinReg:   return LinReg(input, period);
+				case gbNobleCloud_MAType.SMA:      return SMA(input, period);
+				case gbNobleCloud_MAType.TEMA:     return TEMA(input, period);
+				case gbNobleCloud_MAType.TMA:      return TMA(input, period);
+				case gbNobleCloud_MAType.VWMA:     return VWMA(input, period);
+				case gbNobleCloud_MAType.WMA:      return WMA(input, period);
+				case gbNobleCloud_MAType.WilderMA: return EMA(input, 2 * period);
+				case gbNobleCloud_MAType.ZLEMA:    return ZLEMA(input, period);
 				default:                 return null;
 			}
 		}
 
-		private ISeries<double> GetMASeries_Smoothed(ISeries<double> input, gb_MAType maType, int period, bool smoothingEnabled, gb_MAType smoothingMethod, int smoothingPeriod)
+		private ISeries<double> GetMASeries_Smoothed(ISeries<double> input, gbNobleCloud_MAType maType, int period, bool smoothingEnabled, gbNobleCloud_MAType smoothingMethod, int smoothingPeriod)
 		{
 			ISeries<double> series = GetMASeries(input, maType, period);
 			if (smoothingEnabled && series != null) return GetMASeries(series, smoothingMethod, smoothingPeriod);
 			return series;
 		}
 
-		private double ComputeMAValue(ISeries<double> input, gb_MAType maType, int period)
+		private double ComputeMAValue(ISeries<double> input, gbNobleCloud_MAType maType, int period)
 		{
 			ISeries<double> series = GetMASeries(input, maType, period);
 			return series != null ? series[0] : input[0];
@@ -629,6 +645,9 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla
 
 		// ── Private state ─────────────────────────────────────────────────────────
 
+		private const string indicatorName = "Noble Cloud";
+		private const string indicatorNameFull = "Noble Cloud by GreyBeard";
+
 		private Series<double>   seriesUpperThresholdRaw;
 		private Series<double>   seriesLowerThresholdRaw;
 		private Series<double>   seriesUpperThresholdSmoothed;
@@ -655,14 +674,14 @@ namespace NinjaTrader.NinjaScript.Indicators
 {
 	public partial class Indicator : NinjaTrader.Gui.NinjaScript.IndicatorRenderBase
 	{
-		private GreyBeard.KingPanaZilla.gbNobleCloud[] cachegbNobleCloud;
+		private GreyBeard.gbNobleCloud[] cachegbNobleCloud;
 
-		public GreyBeard.KingPanaZilla.gbNobleCloud gbNobleCloud(double sensitivity, int smoothness, gb_MAType baselineMAType, int baselinePeriod, bool baselineSmoothingEnabled, gb_MAType baselineSmoothingMethod, int baselineSmoothingPeriod, gb_MAType kernelMAType, int kernelPeriod, bool kernelSmoothingEnabled, gb_MAType kernelSmoothingMethod, int kernelSmoothingPeriod, int signalSplit, bool filterEnabled, int filterBarMin, int filterBarMax)
+		public GreyBeard.gbNobleCloud gbNobleCloud(double sensitivity, int smoothness, gbNobleCloud_MAType baselineMAType, int baselinePeriod, bool baselineSmoothingEnabled, gbNobleCloud_MAType baselineSmoothingMethod, int baselineSmoothingPeriod, gbNobleCloud_MAType kernelMAType, int kernelPeriod, bool kernelSmoothingEnabled, gbNobleCloud_MAType kernelSmoothingMethod, int kernelSmoothingPeriod, int signalSplit, bool filterEnabled, int filterBarMin, int filterBarMax)
 		{
 			return gbNobleCloud(Input, sensitivity, smoothness, baselineMAType, baselinePeriod, baselineSmoothingEnabled, baselineSmoothingMethod, baselineSmoothingPeriod, kernelMAType, kernelPeriod, kernelSmoothingEnabled, kernelSmoothingMethod, kernelSmoothingPeriod, signalSplit, filterEnabled, filterBarMin, filterBarMax);
 		}
 
-		public GreyBeard.KingPanaZilla.gbNobleCloud gbNobleCloud(ISeries<double> input, double sensitivity, int smoothness, gb_MAType baselineMAType, int baselinePeriod, bool baselineSmoothingEnabled, gb_MAType baselineSmoothingMethod, int baselineSmoothingPeriod, gb_MAType kernelMAType, int kernelPeriod, bool kernelSmoothingEnabled, gb_MAType kernelSmoothingMethod, int kernelSmoothingPeriod, int signalSplit, bool filterEnabled, int filterBarMin, int filterBarMax)
+		public GreyBeard.gbNobleCloud gbNobleCloud(ISeries<double> input, double sensitivity, int smoothness, gbNobleCloud_MAType baselineMAType, int baselinePeriod, bool baselineSmoothingEnabled, gbNobleCloud_MAType baselineSmoothingMethod, int baselineSmoothingPeriod, gbNobleCloud_MAType kernelMAType, int kernelPeriod, bool kernelSmoothingEnabled, gbNobleCloud_MAType kernelSmoothingMethod, int kernelSmoothingPeriod, int signalSplit, bool filterEnabled, int filterBarMin, int filterBarMax)
 		{
 			if (cachegbNobleCloud != null)
 				for (int idx = 0; idx < cachegbNobleCloud.Length; idx++)
@@ -685,7 +704,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 						&& cachegbNobleCloud[idx].FilterBarMax              == filterBarMax
 						&& cachegbNobleCloud[idx].EqualsInput(input))
 						return cachegbNobleCloud[idx];
-			return CacheIndicator<GreyBeard.KingPanaZilla.gbNobleCloud>(new GreyBeard.KingPanaZilla.gbNobleCloud()
+			return CacheIndicator<GreyBeard.gbNobleCloud>(new GreyBeard.gbNobleCloud()
 			{
 				Sensitivity              = sensitivity,
 				Smoothness               = smoothness,
@@ -712,12 +731,12 @@ namespace NinjaTrader.NinjaScript.MarketAnalyzerColumns
 {
 	public partial class MarketAnalyzerColumn : MarketAnalyzerColumnBase
 	{
-		public Indicators.GreyBeard.KingPanaZilla.gbNobleCloud gbNobleCloud(double sensitivity, int smoothness, gb_MAType baselineMAType, int baselinePeriod, bool baselineSmoothingEnabled, gb_MAType baselineSmoothingMethod, int baselineSmoothingPeriod, gb_MAType kernelMAType, int kernelPeriod, bool kernelSmoothingEnabled, gb_MAType kernelSmoothingMethod, int kernelSmoothingPeriod, int signalSplit, bool filterEnabled, int filterBarMin, int filterBarMax)
+		public Indicators.GreyBeard.gbNobleCloud gbNobleCloud(double sensitivity, int smoothness, Indicators.gbNobleCloud_MAType baselineMAType, int baselinePeriod, bool baselineSmoothingEnabled, Indicators.gbNobleCloud_MAType baselineSmoothingMethod, int baselineSmoothingPeriod, Indicators.gbNobleCloud_MAType kernelMAType, int kernelPeriod, bool kernelSmoothingEnabled, Indicators.gbNobleCloud_MAType kernelSmoothingMethod, int kernelSmoothingPeriod, int signalSplit, bool filterEnabled, int filterBarMin, int filterBarMax)
 		{
 			return indicator.gbNobleCloud(Input, sensitivity, smoothness, baselineMAType, baselinePeriod, baselineSmoothingEnabled, baselineSmoothingMethod, baselineSmoothingPeriod, kernelMAType, kernelPeriod, kernelSmoothingEnabled, kernelSmoothingMethod, kernelSmoothingPeriod, signalSplit, filterEnabled, filterBarMin, filterBarMax);
 		}
 
-		public Indicators.GreyBeard.KingPanaZilla.gbNobleCloud gbNobleCloud(ISeries<double> input, double sensitivity, int smoothness, gb_MAType baselineMAType, int baselinePeriod, bool baselineSmoothingEnabled, gb_MAType baselineSmoothingMethod, int baselineSmoothingPeriod, gb_MAType kernelMAType, int kernelPeriod, bool kernelSmoothingEnabled, gb_MAType kernelSmoothingMethod, int kernelSmoothingPeriod, int signalSplit, bool filterEnabled, int filterBarMin, int filterBarMax)
+		public Indicators.GreyBeard.gbNobleCloud gbNobleCloud(ISeries<double> input, double sensitivity, int smoothness, Indicators.gbNobleCloud_MAType baselineMAType, int baselinePeriod, bool baselineSmoothingEnabled, Indicators.gbNobleCloud_MAType baselineSmoothingMethod, int baselineSmoothingPeriod, Indicators.gbNobleCloud_MAType kernelMAType, int kernelPeriod, bool kernelSmoothingEnabled, Indicators.gbNobleCloud_MAType kernelSmoothingMethod, int kernelSmoothingPeriod, int signalSplit, bool filterEnabled, int filterBarMin, int filterBarMax)
 		{
 			return indicator.gbNobleCloud(input, sensitivity, smoothness, baselineMAType, baselinePeriod, baselineSmoothingEnabled, baselineSmoothingMethod, baselineSmoothingPeriod, kernelMAType, kernelPeriod, kernelSmoothingEnabled, kernelSmoothingMethod, kernelSmoothingPeriod, signalSplit, filterEnabled, filterBarMin, filterBarMax);
 		}
@@ -728,12 +747,12 @@ namespace NinjaTrader.NinjaScript.Strategies
 {
 	public partial class Strategy : NinjaTrader.Gui.NinjaScript.StrategyRenderBase
 	{
-		public Indicators.GreyBeard.KingPanaZilla.gbNobleCloud gbNobleCloud(double sensitivity, int smoothness, gb_MAType baselineMAType, int baselinePeriod, bool baselineSmoothingEnabled, gb_MAType baselineSmoothingMethod, int baselineSmoothingPeriod, gb_MAType kernelMAType, int kernelPeriod, bool kernelSmoothingEnabled, gb_MAType kernelSmoothingMethod, int kernelSmoothingPeriod, int signalSplit, bool filterEnabled, int filterBarMin, int filterBarMax)
+		public Indicators.GreyBeard.gbNobleCloud gbNobleCloud(double sensitivity, int smoothness, Indicators.gbNobleCloud_MAType baselineMAType, int baselinePeriod, bool baselineSmoothingEnabled, Indicators.gbNobleCloud_MAType baselineSmoothingMethod, int baselineSmoothingPeriod, Indicators.gbNobleCloud_MAType kernelMAType, int kernelPeriod, bool kernelSmoothingEnabled, Indicators.gbNobleCloud_MAType kernelSmoothingMethod, int kernelSmoothingPeriod, int signalSplit, bool filterEnabled, int filterBarMin, int filterBarMax)
 		{
 			return indicator.gbNobleCloud(Input, sensitivity, smoothness, baselineMAType, baselinePeriod, baselineSmoothingEnabled, baselineSmoothingMethod, baselineSmoothingPeriod, kernelMAType, kernelPeriod, kernelSmoothingEnabled, kernelSmoothingMethod, kernelSmoothingPeriod, signalSplit, filterEnabled, filterBarMin, filterBarMax);
 		}
 
-		public Indicators.GreyBeard.KingPanaZilla.gbNobleCloud gbNobleCloud(ISeries<double> input, double sensitivity, int smoothness, gb_MAType baselineMAType, int baselinePeriod, bool baselineSmoothingEnabled, gb_MAType baselineSmoothingMethod, int baselineSmoothingPeriod, gb_MAType kernelMAType, int kernelPeriod, bool kernelSmoothingEnabled, gb_MAType kernelSmoothingMethod, int kernelSmoothingPeriod, int signalSplit, bool filterEnabled, int filterBarMin, int filterBarMax)
+		public Indicators.GreyBeard.gbNobleCloud gbNobleCloud(ISeries<double> input, double sensitivity, int smoothness, Indicators.gbNobleCloud_MAType baselineMAType, int baselinePeriod, bool baselineSmoothingEnabled, Indicators.gbNobleCloud_MAType baselineSmoothingMethod, int baselineSmoothingPeriod, Indicators.gbNobleCloud_MAType kernelMAType, int kernelPeriod, bool kernelSmoothingEnabled, Indicators.gbNobleCloud_MAType kernelSmoothingMethod, int kernelSmoothingPeriod, int signalSplit, bool filterEnabled, int filterBarMin, int filterBarMax)
 		{
 			return indicator.gbNobleCloud(input, sensitivity, smoothness, baselineMAType, baselinePeriod, baselineSmoothingEnabled, baselineSmoothingMethod, baselineSmoothingPeriod, kernelMAType, kernelPeriod, kernelSmoothingEnabled, kernelSmoothingMethod, kernelSmoothingPeriod, signalSplit, filterEnabled, filterBarMin, filterBarMax);
 		}

@@ -1,6 +1,6 @@
 # GodZilla Suite — NinjaTrader 8
 
-**Namespace:** `NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla`
+**Namespace:** `NinjaTrader.NinjaScript.Indicators.GreyBeard`
 
 A NinjaTrader 8 trading system built around six specialized signal indicators unified under a common namespace and signal contract. The suite has three layers: a set of purpose-built sub-indicators that generate numeric `Signal_Trade` outputs, a pure signal indicator (GodZuki) for visual monitoring, and a fully automated ATM trading strategy (GodZillaKilla) that acts on those signals.
 
@@ -46,7 +46,7 @@ All six expose a `Signal_Trade` series using a consistent **−1 / 0 / +1** (or 
 
 ## Quick Start
 
-1. Compile the six sub-indicators first — they must be present in the `KingPanaZilla` namespace before GodZillaKilla or GodZuki will compile.
+1. Compile the six sub-indicators first — they must be present in the `GreyBeard` namespace before GodZillaKilla or GodZuki will compile.
 2. Add **GodZuki** to a chart to verify signal output before enabling live trading.
 3. Add **GodZillaKilla** to the same chart and configure your ATM template, signal set, and session times.
 

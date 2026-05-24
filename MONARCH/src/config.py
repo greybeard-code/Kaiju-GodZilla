@@ -122,3 +122,39 @@ def find_nt8_folder(override: str = None) -> Path:
         "Use --nt8-path to specify the path, "
         "or set the NT8_PATH environment variable."
     )
+
+
+# ── MONARCH folder structure ──────────────────────────────────────────────────
+
+def init_monarch_dirs(nt8: Path):
+    """
+    Create the MONARCH folder structure inside the NT8 directory.
+
+    Returns:
+        (monarch_dir, logs_dir, reports_dir)
+    """
+    monarch = nt8 / 'MONARCH'
+    logs    = monarch / 'logs'
+    reports = monarch / 'reports'
+    for d in (monarch, logs, reports):
+        d.mkdir(parents=True, exist_ok=True)
+    return monarch, logs, reports
+
+
+# ── Per-installation config file ─────────────────────────────────────────────
+
+def load_local_config(monarch_dir: Path) -> dict:
+    """Load optional config.json from the MONARCH folder."""
+    cfg_file = monarch_dir / 'config.json'
+    if cfg_file.exists():
+        try:
+            with open(cfg_file, encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def save_local_config(monarch_dir: Path, cfg: dict):
+    with open(monarch_dir / 'config.json', 'w', encoding='utf-8') as f:
+        json.dump(cfg, f, indent=2)

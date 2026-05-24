@@ -7,7 +7,6 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Threading;
 using System.Xml.Serialization;
@@ -21,16 +20,45 @@ using NinjaTrader.NinjaScript.DrawingTools;
 using SharpDX;
 #endregion
 
-namespace NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla
+public enum gbThunderZilla_MAType
 {
-[CategoryOrder("General", 1000010)]
-[CategoryOrder("Special", 1000060)]
-[CategoryOrder("Graphics", 1000020)]
-[CategoryOrder("Gradient", 1000030)]
-[CategoryOrder("Alerts", 1000040)]
-[CategoryOrder("Toggle", 1000050)]
+	DEMA,
+	EMA,
+	HMA,
+	LinReg,
+	SMA,
+	TEMA,
+	TMA,
+	VWMA,
+	WMA,
+	WilderMA,
+	ZLEMA
+}
+
+namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
+{
+public enum gbThunderZillaTextPosition
+{
+	BottomLeft = 0,
+	BottomRight = 1,
+	Center = 2,
+	TopLeft = 3,
+	TopRight = 4
+}
+
+public enum gbThunderZilla_RenderingMethod
+{
+	Custom,
+	Builtin
+}
+
 [CategoryOrder("Developer", 0)]
-[CategoryOrder("Critical", 1000070)]
+[CategoryOrder("General",   1000010)]
+[CategoryOrder("Graphics",  1000020)]
+[CategoryOrder("Gradient",  1000030)]
+[CategoryOrder("Alerts",    1000040)]
+[CategoryOrder("Special",   1000060)]
+[CategoryOrder("Critical",  1000070)]
 public class gbThunderZilla : Indicator
 {
 	private enum SignalTradeInfo
@@ -76,33 +104,33 @@ public class gbThunderZilla : Indicator
 
 	private const double offsetMultiplierTrend = 30.0;
 
-	private const gbThunderZillaMAType sumoFastMA1Type = gbThunderZillaMAType.EMA;
+	private const gbThunderZilla_MAType sumoFastMA1Type = gbThunderZilla_MAType.EMA;
 
 	private const int sumoFastMA1Period = 14;
 
 	private const bool sumoFastMA1SmoothingEnabled = false;
 
-	private const gbThunderZillaMAType sumoFastMA1SmoothingMethod = gbThunderZillaMAType.SMA;
+	private const gbThunderZilla_MAType sumoFastMA1SmoothingMethod = gbThunderZilla_MAType.SMA;
 
 	private const int sumoFastMA1SmoothingPeriod = 5;
 
-	private const gbThunderZillaMAType sumoFastMA2Type = gbThunderZillaMAType.EMA;
+	private const gbThunderZilla_MAType sumoFastMA2Type = gbThunderZilla_MAType.EMA;
 
 	private const int sumoFastMA2Period = 30;
 
 	private const bool sumoFastMA2SmoothingEnabled = false;
 
-	private const gbThunderZillaMAType sumoFastMA2SmoothingMethod = gbThunderZillaMAType.SMA;
+	private const gbThunderZilla_MAType sumoFastMA2SmoothingMethod = gbThunderZilla_MAType.SMA;
 
 	private const int sumoFastMA2SmoothingPeriod = 10;
 
-	private const gbThunderZillaMAType sumoFastMA3Type = gbThunderZillaMAType.EMA;
+	private const gbThunderZilla_MAType sumoFastMA3Type = gbThunderZilla_MAType.EMA;
 
 	private const int sumoFastMA3Period = 45;
 
 	private const bool sumoFastMA3SmoothingEnabled = false;
 
-	private const gbThunderZillaMAType sumoFastMA3SmoothingMethod = gbThunderZillaMAType.SMA;
+	private const gbThunderZilla_MAType sumoFastMA3SmoothingMethod = gbThunderZilla_MAType.SMA;
 
 	private const int sumoFastMA3SmoothingPeriod = 15;
 
@@ -128,7 +156,7 @@ public class gbThunderZilla : Indicator
 
 	private const int oBOSStochPeriodK = 14;
 
-	private const gbThunderZillaMAType oBOSStochSmoothingMethod = gbThunderZillaMAType.SMA;
+	private const gbThunderZilla_MAType oBOSStochSmoothingMethod = gbThunderZilla_MAType.SMA;
 
 	private const int oBOSStochSmoothingPeriod = 3;
 
@@ -137,8 +165,6 @@ public class gbThunderZilla : Indicator
 	private const int oBOSStochThresholdLow = 30;
 
 	private const int oBOSSafeReversalPeriod = 3;
-
-	private gbThunderZillaTextPosition togglePositionAlignment;
 
 	private const int defaultMargin = 5;
 
@@ -169,10 +195,6 @@ public class gbThunderZilla : Indicator
 	private SignalTradeInfo trendState;
 
 	private Window alertWindow;
-
-	private Grid toggle;
-	private Button toggleButton;
-	private Thumb toggleDrag;
 
 	private const string prefix = "gbThunderZilla";
 
@@ -411,13 +433,10 @@ public class gbThunderZilla : Indicator
 	public string Author  => "GreyBeard";
 
 	[Display(Name = "Version", Order = 1,  GroupName = "Developer")]
-	public string Version => "1.0";
+	public string Version => "1.1";
 
 	[Display(Name = "Website", Order = 5,  GroupName = "Developer")]
-	public string Website => "greybeard.com";
-
-	[Display(Name = "Update", Order = 10, GroupName = "Developer")]
-	public string Update => "11 Aug 2025";
+	public string Website => "https://greybeardconsulting.net/";
 
 	[Display(Name = "Screen DPI", Order = 100, GroupName = "General")]
 	public int ScreenDPI { get; set; }
@@ -631,7 +650,7 @@ public class gbThunderZilla : Indicator
 
 	[NinjaScriptProperty]
 	[Display(Name = "Trend: MA Type", Order = 0, GroupName = "Parameters")]
-	public gbThunderZillaMAType TrendMAType { get; set; }
+	public gbThunderZilla_MAType TrendMAType { get; set; }
 
 	[NinjaScriptProperty]
 	[Display(Name = "Trend: Period", Order = 1, GroupName = "Parameters")]
@@ -643,7 +662,7 @@ public class gbThunderZilla : Indicator
 
 	[Display(Name = "Trend: Smoothing Method", Order = 3, GroupName = "Parameters")]
 	[NinjaScriptProperty]
-	public gbThunderZillaMAType TrendSmoothingMethod { get; set; }
+	public gbThunderZilla_MAType TrendSmoothingMethod { get; set; }
 	[Display(Name = "Trend: Smoothing Period", Order = 4, GroupName = "Parameters")]
 	[NinjaScriptProperty]
 	public int TrendSmoothingPeriod { get; set; }
@@ -659,132 +678,6 @@ public class gbThunderZilla : Indicator
 	[Display(Name = "Signal: Quantity Per Trend", Order = 22, GroupName = "Parameters")]
 	[NinjaScriptProperty]
 	public int SignalQuantityPerTrend { get; set; }
-
-	[Display(Name = "Enabled", Order = 0, GroupName = "Toggle")]
-	public bool ToggleEnabled { get; set; }
-
-	[XmlIgnore]
-	[Display(Name = "Background: On", Order = 10, GroupName = "Toggle")]
-	public Brush ToggleBackBrushOn { get; set; }
-
-	[Browsable(false)]
-	public string ToggleBackBrushOnSerialize
-	{
-		get
-		{
-			return Serialize.BrushToString(ToggleBackBrushOn);
-		}
-		set
-		{
-			ToggleBackBrushOn = Serialize.StringToBrush(value);
-		}
-	}
-
-	[Display(Name = "Background: Off", Order = 11, GroupName = "Toggle")]
-	[XmlIgnore]
-	public Brush ToggleBackBrushOff { get; set; }
-
-	[Browsable(false)]
-	public string ToggleBackBrushOffSerialize
-	{
-		get
-		{
-			return Serialize.BrushToString(ToggleBackBrushOff);
-		}
-		set
-		{
-			ToggleBackBrushOff = Serialize.StringToBrush(value);
-		}
-	}
-
-	[Display(Name = "Text: String", Order = 20, GroupName = "Toggle")]
-	public string ToggleTextString { get; set; }
-
-	[XmlIgnore]
-	[Display(Name = "Text: Color", Order = 21, GroupName = "Toggle")]
-	public Brush ToggleTextBrush { get; set; }
-
-	[Browsable(false)]
-	public string ToggleTextBrushSerialize
-	{
-		get
-		{
-			return Serialize.BrushToString(ToggleTextBrush);
-		}
-		set
-		{
-			ToggleTextBrush = Serialize.StringToBrush(value);
-		}
-	}
-	[Display(Name = "Text: Size", Order = 22, GroupName = "Toggle")]
-	public int ToggleTextSize { get; set; }
-
-	[Display(Name = "Drag Bar: Color", Order = 30, GroupName = "Toggle")]
-	[XmlIgnore]
-	public Brush ToggleDragBrush { get; set; }
-
-	[Browsable(false)]
-	public string ToggleDragBrushSerialize
-	{
-		get
-		{
-			return Serialize.BrushToString(ToggleDragBrush);
-		}
-		set
-		{
-			ToggleDragBrush = Serialize.StringToBrush(value);
-		}
-	}
-
-	[Display(Name = "Position: Alignment", Order = 40, GroupName = "Toggle")]
-	public gbThunderZillaTextPosition TogglePositionAlignment
-	{
-		get
-		{
-			return togglePositionAlignment;
-		}
-		set
-		{
-			switch (value)
-			{
-				case gbThunderZillaTextPosition.TopLeft:
-					TogglePositionMarginLeft = 5.0;
-					TogglePositionMarginTop = 5.0;
-					break;
-				case gbThunderZillaTextPosition.TopRight:
-					TogglePositionMarginRight = 5.0;
-					TogglePositionMarginTop = 5.0;
-					break;
-				case gbThunderZillaTextPosition.BottomRight:
-					TogglePositionMarginRight = 5.0;
-					TogglePositionMarginBottom = 5.0;
-					break;
-				case gbThunderZillaTextPosition.BottomLeft:
-					TogglePositionMarginLeft = 5.0;
-					TogglePositionMarginBottom = 5.0;
-					break;
-				case gbThunderZillaTextPosition.Center:
-					TogglePositionMarginLeft = 5.0;
-					TogglePositionMarginTop = 5.0;
-					TogglePositionMarginRight = 5.0;
-					TogglePositionMarginBottom = 5.0;
-					break;
-			}
-			togglePositionAlignment = value;
-		}
-	}
-
-	[Display(Name = "Position: Margin Left", Order = 41, GroupName = "Toggle")]
-	public double TogglePositionMarginLeft { get; set; }
-
-	[Display(Name = "Position: Margin Top", Order = 42, GroupName = "Toggle")]
-	public double TogglePositionMarginTop { get; set; }
-
-	[Display(Name = "Position: Margin Right", Order = 43, GroupName = "Toggle")]
-	public double TogglePositionMarginRight { get; set; }
-
-	[Display(Name = "Position: Margin Bottom", Order = 44, GroupName = "Toggle")]
-	public double TogglePositionMarginBottom { get; set; }
 
 	[Display(Name = "Z Order", Order = 0, GroupName = "Special")]
 	public int IndicatorZOrder { get; set; }
@@ -841,26 +734,26 @@ public class gbThunderZilla : Indicator
 		return string.Empty;
 	}
 
-	private double GetMA(ISeries<double> input, gbThunderZillaMAType maType, int period)
+	private double GetMA(ISeries<double> input, gbThunderZilla_MAType maType, int period)
 	{
 		switch (maType)
 		{
-			case gbThunderZillaMAType.EMA: return EMA(input, period)[0];
-			case gbThunderZillaMAType.SMA: return SMA(input, period)[0];
-			case gbThunderZillaMAType.WMA: return WMA(input, period)[0];
-			case gbThunderZillaMAType.HMA: return HMA(input, period)[0];
-			case gbThunderZillaMAType.DEMA: return DEMA(input, period)[0];
-			case gbThunderZillaMAType.TEMA: return TEMA(input, period)[0];
-			case gbThunderZillaMAType.TMA: return TMA(input, period)[0];
-			case gbThunderZillaMAType.LinReg: return LinReg(input, period)[0];
-			case gbThunderZillaMAType.VWMA: return VWMA(input, period)[0];
-			case gbThunderZillaMAType.WilderMA: return EMA(input, 2 * period - 1)[0];
-			case gbThunderZillaMAType.ZLEMA: return ZLEMA(input, period)[0];
+			case gbThunderZilla_MAType.EMA: return EMA(input, period)[0];
+			case gbThunderZilla_MAType.SMA: return SMA(input, period)[0];
+			case gbThunderZilla_MAType.WMA: return WMA(input, period)[0];
+			case gbThunderZilla_MAType.HMA: return HMA(input, period)[0];
+			case gbThunderZilla_MAType.DEMA: return DEMA(input, period)[0];
+			case gbThunderZilla_MAType.TEMA: return TEMA(input, period)[0];
+			case gbThunderZilla_MAType.TMA: return TMA(input, period)[0];
+			case gbThunderZilla_MAType.LinReg: return LinReg(input, period)[0];
+			case gbThunderZilla_MAType.VWMA: return VWMA(input, period)[0];
+			case gbThunderZilla_MAType.WilderMA: return EMA(input, 2 * period - 1)[0];
+			case gbThunderZilla_MAType.ZLEMA: return ZLEMA(input, period)[0];
 			default: return SMA(input, period)[0];
 		}
 	}
 
-	private double GetMASmoothed(ISeries<double> input, gbThunderZillaMAType maType, int period, bool smoothEnabled, gbThunderZillaMAType smoothMethod, int smoothPeriod)
+	private double GetMASmoothed(ISeries<double> input, gbThunderZilla_MAType maType, int period, bool smoothEnabled, gbThunderZilla_MAType smoothMethod, int smoothPeriod)
 	{
 		double val = GetMA(input, maType, period);
 		return val;
@@ -917,7 +810,7 @@ public class gbThunderZilla : Indicator
 		switch (State)
 		{
 			case State.SetDefaults:
-				Description = string.Empty;
+				Description = "Trend strength indicator with configurable MA smoothing.";
 				Name = "gbThunderZilla";
 				Calculate = Calculate.OnBarClose;
 				IsOverlay = true;
@@ -988,26 +881,14 @@ public class gbThunderZilla : Indicator
 				CloudDowntrend = Brushes.HotPink;
 				CloudNeutral = Brushes.DarkGoldenrod;
 				CloudOpacity = 30;
-				TrendMAType = gbThunderZillaMAType.SMA;
+				TrendMAType = gbThunderZilla_MAType.SMA;
 				TrendPeriod = 100;
 				TrendSmoothingEnabled = false;
-				TrendSmoothingMethod = gbThunderZillaMAType.EMA;
+				TrendSmoothingMethod = gbThunderZilla_MAType.EMA;
 				TrendSmoothingPeriod = 10;
 				StopOffsetMultiplierStop = 60.0;
 				SignalQuantityPerFlat = 2;
 				SignalQuantityPerTrend = 999;
-				ToggleEnabled = true;
-				ToggleBackBrushOn = Brushes.DodgerBlue;
-				ToggleBackBrushOff = Brushes.Silver;
-				ToggleTextString = "ThunderZilla";
-				ToggleTextBrush = Brushes.White;
-				ToggleTextSize = 10;
-				ToggleDragBrush = Brushes.LimeGreen;
-				TogglePositionAlignment = gbThunderZillaTextPosition.TopLeft;
-				TogglePositionMarginLeft = 5.0;
-				TogglePositionMarginTop = 5.0;
-				TogglePositionMarginRight = 5.0;
-				TogglePositionMarginBottom = 5.0;
 				IndicatorZOrder = 0;
 				UserNote = "instrument (period)";
 				AddPlot(new Stroke(Brushes.Gold, DashStyleHelper.Solid, 5f), PlotStyle.Line, "Trend");
@@ -1051,57 +932,6 @@ public class gbThunderZilla : Indicator
 					SetZOrder(IndicatorZOrder);
 				}
 				isCharting = ChartControl != null;
-				if (!isCharting)
-				{
-					return;
-				}
-				ChartControl.Dispatcher.InvokeAsync(delegate
-				{
-					if (ToggleEnabled && toggle == null)
-					{
-						Thickness thickness = new Thickness(TogglePositionMarginLeft, TogglePositionMarginTop, TogglePositionMarginRight, TogglePositionMarginBottom);
-
-						toggle = new Grid();
-						toggle.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-						toggle.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(6) });
-						toggle.HorizontalAlignment = HorizontalAlignment.Left;
-						toggle.VerticalAlignment = VerticalAlignment.Top;
-						toggle.Margin = thickness;
-
-						toggleButton = new Button
-						{
-							Content = ToggleTextString,
-							Foreground = ToggleTextBrush,
-							FontSize = ToggleTextSize,
-							Background = SwitchedOn ? ToggleBackBrushOn : ToggleBackBrushOff,
-							Padding = new Thickness(6, 3, 6, 3),
-							Cursor = System.Windows.Input.Cursors.Hand
-						};
-						var btnBorder = new FrameworkElementFactory(typeof(System.Windows.Controls.Border));
-						btnBorder.SetValue(System.Windows.Controls.Border.BackgroundProperty, new System.Windows.Data.Binding("Background") { RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.TemplatedParent) });
-						btnBorder.SetValue(System.Windows.Controls.Border.PaddingProperty, new System.Windows.Data.Binding("Padding") { RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.TemplatedParent) });
-						var btnContent = new FrameworkElementFactory(typeof(ContentPresenter));
-						btnBorder.AppendChild(btnContent);
-						toggleButton.Template = new ControlTemplate(typeof(Button)) { VisualTree = btnBorder };
-						Grid.SetColumn(toggleButton, 0);
-						toggle.Children.Add(toggleButton);
-
-						toggleDrag = new Thumb
-						{
-							Width = 6,
-							Cursor = System.Windows.Input.Cursors.SizeAll
-						};
-						var rectFactory = new FrameworkElementFactory(typeof(System.Windows.Shapes.Rectangle));
-						rectFactory.SetValue(System.Windows.Shapes.Shape.FillProperty, ToggleDragBrush);
-						toggleDrag.Template = new ControlTemplate(typeof(Thumb)) { VisualTree = rectFactory };
-						Grid.SetColumn(toggleDrag, 1);
-						toggle.Children.Add(toggleDrag);
-
-						toggleDrag.DragDelta += OnToggleDrag;
-						toggleButton.Click += OnToggleClick;
-						UserControlCollection.Add(toggle);
-					}
-				});
 				break;
 
 			case State.Historical:
@@ -1112,14 +942,6 @@ public class gbThunderZilla : Indicator
 				{
 					ChartControl.Dispatcher.InvokeAsync(delegate
 					{
-						if (toggle != null)
-						{
-							toggleDrag.DragDelta -= OnToggleDrag;
-							toggleButton.Click -= OnToggleClick;
-							toggle = null;
-							toggleButton = null;
-							toggleDrag = null;
-						}
 						if (alertWindow != null)
 						{
 							alertWindow.Close();
@@ -1756,83 +1578,6 @@ public class gbThunderZilla : Indicator
 		}
 	}
 
-	private void OnToggleDrag(object sender, DragDeltaEventArgs e)
-	{
-		TriggerCustomEvent((Action<object>)delegate
-		{
-			if (isCharting)
-			{
-				ChartControl.Dispatcher.InvokeAsync(delegate
-				{
-					var m = toggle.Margin;
-					toggle.Margin = new Thickness(m.Left + e.HorizontalChange, m.Top + e.VerticalChange, m.Right - e.HorizontalChange, m.Bottom - e.VerticalChange);
-					TogglePositionMarginLeft = toggle.Margin.Left;
-					TogglePositionMarginTop = toggle.Margin.Top;
-					TogglePositionMarginRight = toggle.Margin.Right;
-					TogglePositionMarginBottom = toggle.Margin.Bottom;
-				});
-			}
-		}, (object)e);
-	}
-
-	private void OnToggleClick(object sender, RoutedEventArgs e)
-	{
-		TriggerCustomEvent((Action<object>)delegate
-		{
-			if (isCharting)
-			{
-				ChartControl.Dispatcher.InvokeAsync(delegate
-				{
-					SwitchedOn = !SwitchedOn;
-					toggleButton.Background = SwitchedOn ? ToggleBackBrushOn : ToggleBackBrushOff;
-					if (BarEnabled)
-					{
-						if (!SwitchedOn)
-						{
-							for (int num = CurrentBar; num >= 0; num--)
-							{
-								int num2 = CurrentBar - num;
-								CandleOutlineBrushes[num2] = ChartBars.Properties.ChartStyle.Stroke2.Brush;
-								double valueAt = Close.GetValueAt(num);
-								double valueAt2 = Open.GetValueAt(num);
-								if (MathExtentions.ApproxCompare(valueAt, valueAt2) > 0)
-								{
-									BarBrushes[num2] = ChartBars.Properties.ChartStyle.UpBrush;
-								}
-								if (MathExtentions.ApproxCompare(valueAt, valueAt2) < 0)
-								{
-									BarBrushes[num2] = ChartBars.Properties.ChartStyle.DownBrush;
-								}
-							}
-						}
-						else
-						{
-							for (int num3 = CurrentBar; num3 >= 0; num3--)
-							{
-								if (Signal_Trend.IsValidDataPointAt(num3))
-								{
-									int num4 = Convert.ToInt32(Signal_Trend.GetValueAt(num3));
-									SignalTradeInfo signalTradeInfo = ((num4 != 0) ? ((num4 == 1) ? SignalTradeInfo.UptrendStart : SignalTradeInfo.DowntrendStart) : SignalTradeInfo.NoSignal);
-									PaintBar(signalTradeInfo, isToggleClickEvent: true, num3);
-								}
-							}
-						}
-					}
-					IEnumerator<IDrawingTool> enumerator = ((IEnumerable<IDrawingTool>)DrawObjects).GetEnumerator();
-					while (enumerator.MoveNext())
-					{
-						IDrawingTool current = enumerator.Current;
-						if (current.Tag.Contains("gbThunderZilla"))
-						{
-							((IChartObject)current).IsVisible = SwitchedOn;
-						}
-					}
-					ChartControl.InvalidateVisual();
-				});
-			}
-		}, (object)e);
-	}
-
 	private void PrintMarker(SignalInfo signalInfo, bool isBullish)
 	{
 		if (isCharting && MarkerEnabled && CurrentBar >= BarsRequiredToPlot)
@@ -1939,7 +1684,7 @@ public class gbThunderZilla : Indicator
 		string text5 = (flag ? string.Format("The market has entered {0}.", (!isBullish) ? "a DOWNTREND" : "an UPTREND") : (flag2 ? string.Format("The {0} has slowed down.", (!isBullish) ? "DOWNTREND" : "UPTREND") : (flag3 ? string.Format("The {0} has had a PULLBACK.", (!isBullish) ? "downtrend" : "uptrend") : string.Format("The {0} has had a MOVE STOP.", (!isBullish) ? "downtrend" : "uptrend"))));
 		string popupMessage = text5 + "\n\nAlert chart: " + text3 + "\nAlert time: " + text2;
 		string text6 = "\n_______________________\n\n";
-		string text7 = popupMessage + text6 + "ThunderZilla by GreyBeard\nWebsite: https://greybeard.com";
+		string text7 = popupMessage + text6 + "ThunderZilla by GreyBeard\nWebsite: https://greybeardconsulting.net/";
 		if (PopupEnabled && isCharting)
 		{
 			ChartControl.Dispatcher.InvokeAsync(delegate
@@ -2012,37 +1757,7 @@ public class gbThunderZilla : Indicator
 	}
 
 }
-} // end namespace GreyBeard.KingPanaZilla
-
-public enum gbThunderZillaMAType
-{
-	DEMA = 0,
-	EMA = 1,
-	HMA = 2,
-	LinReg = 3,
-	SMA = 4,
-	TEMA = 5,
-	TMA = 6,
-	VWMA = 7,
-	WMA = 8,
-	WilderMA = 9,
-	ZLEMA = 10
-}
-
-public enum gbThunderZillaTextPosition
-{
-	BottomLeft = 0,
-	BottomRight = 1,
-	Center = 2,
-	TopLeft = 3,
-	TopRight = 4
-}
-
-public enum gbThunderZilla_RenderingMethod
-{
-	Custom,
-	Builtin
-}
+} // end namespace GreyBeard
 
 public class gbThunderZilla_SoundConverter : TypeConverter
 {
@@ -2073,19 +1788,19 @@ namespace NinjaTrader.NinjaScript.Indicators
 {
 	public partial class Indicator : NinjaTrader.Gui.NinjaScript.IndicatorRenderBase
 	{
-		private GreyBeard.KingPanaZilla.gbThunderZilla[] cachegbThunderZilla;
-		public GreyBeard.KingPanaZilla.gbThunderZilla gbThunderZilla(gbThunderZillaMAType trendMAType, int trendPeriod, bool trendSmoothingEnabled, gbThunderZillaMAType trendSmoothingMethod, int trendSmoothingPeriod, double stopOffsetMultiplierStop, int signalQuantityPerFlat, int signalQuantityPerTrend)
+		private GreyBeard.gbThunderZilla[] cachegbThunderZilla;
+		public GreyBeard.gbThunderZilla gbThunderZilla(gbThunderZilla_MAType trendMAType, int trendPeriod, bool trendSmoothingEnabled, gbThunderZilla_MAType trendSmoothingMethod, int trendSmoothingPeriod, double stopOffsetMultiplierStop, int signalQuantityPerFlat, int signalQuantityPerTrend)
 		{
 			return gbThunderZilla(Input, trendMAType, trendPeriod, trendSmoothingEnabled, trendSmoothingMethod, trendSmoothingPeriod, stopOffsetMultiplierStop, signalQuantityPerFlat, signalQuantityPerTrend);
 		}
 
-		public GreyBeard.KingPanaZilla.gbThunderZilla gbThunderZilla(ISeries<double> input, gbThunderZillaMAType trendMAType, int trendPeriod, bool trendSmoothingEnabled, gbThunderZillaMAType trendSmoothingMethod, int trendSmoothingPeriod, double stopOffsetMultiplierStop, int signalQuantityPerFlat, int signalQuantityPerTrend)
+		public GreyBeard.gbThunderZilla gbThunderZilla(ISeries<double> input, gbThunderZilla_MAType trendMAType, int trendPeriod, bool trendSmoothingEnabled, gbThunderZilla_MAType trendSmoothingMethod, int trendSmoothingPeriod, double stopOffsetMultiplierStop, int signalQuantityPerFlat, int signalQuantityPerTrend)
 		{
 			if (cachegbThunderZilla != null)
 				for (int idx = 0; idx < cachegbThunderZilla.Length; idx++)
 					if (cachegbThunderZilla[idx] != null && cachegbThunderZilla[idx].TrendMAType == trendMAType && cachegbThunderZilla[idx].TrendPeriod == trendPeriod && cachegbThunderZilla[idx].TrendSmoothingEnabled == trendSmoothingEnabled && cachegbThunderZilla[idx].TrendSmoothingMethod == trendSmoothingMethod && cachegbThunderZilla[idx].TrendSmoothingPeriod == trendSmoothingPeriod && cachegbThunderZilla[idx].StopOffsetMultiplierStop == stopOffsetMultiplierStop && cachegbThunderZilla[idx].SignalQuantityPerFlat == signalQuantityPerFlat && cachegbThunderZilla[idx].SignalQuantityPerTrend == signalQuantityPerTrend && cachegbThunderZilla[idx].EqualsInput(input))
 						return cachegbThunderZilla[idx];
-			return CacheIndicator<GreyBeard.KingPanaZilla.gbThunderZilla>(new GreyBeard.KingPanaZilla.gbThunderZilla(){ TrendMAType = trendMAType, TrendPeriod = trendPeriod, TrendSmoothingEnabled = trendSmoothingEnabled, TrendSmoothingMethod = trendSmoothingMethod, TrendSmoothingPeriod = trendSmoothingPeriod, StopOffsetMultiplierStop = stopOffsetMultiplierStop, SignalQuantityPerFlat = signalQuantityPerFlat, SignalQuantityPerTrend = signalQuantityPerTrend }, input, ref cachegbThunderZilla);
+			return CacheIndicator<GreyBeard.gbThunderZilla>(new GreyBeard.gbThunderZilla(){ TrendMAType = trendMAType, TrendPeriod = trendPeriod, TrendSmoothingEnabled = trendSmoothingEnabled, TrendSmoothingMethod = trendSmoothingMethod, TrendSmoothingPeriod = trendSmoothingPeriod, StopOffsetMultiplierStop = stopOffsetMultiplierStop, SignalQuantityPerFlat = signalQuantityPerFlat, SignalQuantityPerTrend = signalQuantityPerTrend }, input, ref cachegbThunderZilla);
 		}
 	}
 }
@@ -2094,12 +1809,12 @@ namespace NinjaTrader.NinjaScript.MarketAnalyzerColumns
 {
 	public partial class MarketAnalyzerColumn : MarketAnalyzerColumnBase
 	{
-		public Indicators.GreyBeard.KingPanaZilla.gbThunderZilla gbThunderZilla(gbThunderZillaMAType trendMAType, int trendPeriod, bool trendSmoothingEnabled, gbThunderZillaMAType trendSmoothingMethod, int trendSmoothingPeriod, double stopOffsetMultiplierStop, int signalQuantityPerFlat, int signalQuantityPerTrend)
+		public Indicators.GreyBeard.gbThunderZilla gbThunderZilla(gbThunderZilla_MAType trendMAType, int trendPeriod, bool trendSmoothingEnabled, gbThunderZilla_MAType trendSmoothingMethod, int trendSmoothingPeriod, double stopOffsetMultiplierStop, int signalQuantityPerFlat, int signalQuantityPerTrend)
 		{
 			return indicator.gbThunderZilla(Input, trendMAType, trendPeriod, trendSmoothingEnabled, trendSmoothingMethod, trendSmoothingPeriod, stopOffsetMultiplierStop, signalQuantityPerFlat, signalQuantityPerTrend);
 		}
 
-		public Indicators.GreyBeard.KingPanaZilla.gbThunderZilla gbThunderZilla(ISeries<double> input , gbThunderZillaMAType trendMAType, int trendPeriod, bool trendSmoothingEnabled, gbThunderZillaMAType trendSmoothingMethod, int trendSmoothingPeriod, double stopOffsetMultiplierStop, int signalQuantityPerFlat, int signalQuantityPerTrend)
+		public Indicators.GreyBeard.gbThunderZilla gbThunderZilla(ISeries<double> input , gbThunderZilla_MAType trendMAType, int trendPeriod, bool trendSmoothingEnabled, gbThunderZilla_MAType trendSmoothingMethod, int trendSmoothingPeriod, double stopOffsetMultiplierStop, int signalQuantityPerFlat, int signalQuantityPerTrend)
 		{
 			return indicator.gbThunderZilla(input, trendMAType, trendPeriod, trendSmoothingEnabled, trendSmoothingMethod, trendSmoothingPeriod, stopOffsetMultiplierStop, signalQuantityPerFlat, signalQuantityPerTrend);
 		}
@@ -2110,12 +1825,12 @@ namespace NinjaTrader.NinjaScript.Strategies
 {
 	public partial class Strategy : NinjaTrader.Gui.NinjaScript.StrategyRenderBase
 	{
-		public Indicators.GreyBeard.KingPanaZilla.gbThunderZilla gbThunderZilla(gbThunderZillaMAType trendMAType, int trendPeriod, bool trendSmoothingEnabled, gbThunderZillaMAType trendSmoothingMethod, int trendSmoothingPeriod, double stopOffsetMultiplierStop, int signalQuantityPerFlat, int signalQuantityPerTrend)
+		public Indicators.GreyBeard.gbThunderZilla gbThunderZilla(gbThunderZilla_MAType trendMAType, int trendPeriod, bool trendSmoothingEnabled, gbThunderZilla_MAType trendSmoothingMethod, int trendSmoothingPeriod, double stopOffsetMultiplierStop, int signalQuantityPerFlat, int signalQuantityPerTrend)
 		{
 			return indicator.gbThunderZilla(Input, trendMAType, trendPeriod, trendSmoothingEnabled, trendSmoothingMethod, trendSmoothingPeriod, stopOffsetMultiplierStop, signalQuantityPerFlat, signalQuantityPerTrend);
 		}
 
-		public Indicators.GreyBeard.KingPanaZilla.gbThunderZilla gbThunderZilla(ISeries<double> input , gbThunderZillaMAType trendMAType, int trendPeriod, bool trendSmoothingEnabled, gbThunderZillaMAType trendSmoothingMethod, int trendSmoothingPeriod, double stopOffsetMultiplierStop, int signalQuantityPerFlat, int signalQuantityPerTrend)
+		public Indicators.GreyBeard.gbThunderZilla gbThunderZilla(ISeries<double> input , gbThunderZilla_MAType trendMAType, int trendPeriod, bool trendSmoothingEnabled, gbThunderZilla_MAType trendSmoothingMethod, int trendSmoothingPeriod, double stopOffsetMultiplierStop, int signalQuantityPerFlat, int signalQuantityPerTrend)
 		{
 			return indicator.gbThunderZilla(input, trendMAType, trendPeriod, trendSmoothingEnabled, trendSmoothingMethod, trendSmoothingPeriod, stopOffsetMultiplierStop, signalQuantityPerFlat, signalQuantityPerTrend);
 		}

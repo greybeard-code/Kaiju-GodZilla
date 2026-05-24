@@ -17,7 +17,7 @@ Compiled exe deploys to `%USERPROFILE%\Documents\NinjaTrader 8\MONARCH\MONARCH.e
 
 ## Python Environment — Critical
 
-The user runs **pyenv-win** with multiple Python versions:
+The machine runs **pyenv-win** with multiple Python versions:
 
 | Command   | Version | Owns PyInstaller? |
 |-----------|---------|-------------------|
@@ -27,6 +27,9 @@ The user runs **pyenv-win** with multiple Python versions:
 **Never invoke PyInstaller with the default `python` command.** The build scripts
 derive the correct interpreter from `pip show pyinstaller`'s `Location:` field
 (site-packages → up two dirs → `python.exe`).
+
+Running from source (`python src\monarch.py`) works with any Python — the
+3.10.5 restriction applies only to PyInstaller compilation.
 
 The canonical build tool is `build.ps1` (PowerShell). `build.bat` also exists
 as an alternative but is less reliable in pyenv environments.
@@ -50,10 +53,12 @@ python make_icon.py        # auto-installs Pillow; writes monarch.ico
 4. Runs PyInstaller `--onefile --console --icon monarch.ico` (icon optional)
 5. Copies `dist\MONARCH.exe` to `NinjaTrader 8\MONARCH\MONARCH.exe`
 
+`build/`, `dist/`, and `*.spec` are in `.gitignore` — never commit them.
+
 ### Known build pitfalls
 
 - **`enum34`**: Must not be installed in the 3.10.5 environment. PyInstaller 6.x
-  refuses to run with it. `build.ps1` auto-removes it; if it reappears, uninstall:
+  refuses to run with it. `build.ps1` auto-removes it; if it reappears:
   ```powershell
   & "C:\Users\dcjon\.pyenv\pyenv-win\versions\3.10.5\python.exe" -m pip uninstall enum34
   ```
@@ -100,6 +105,22 @@ Sim accounts (names starting with `'Sim'`) are parsed from CSVs but flagged
 
 ---
 
+## Contract Roll — Action Required Each Quarter
+
+The futures contract ticker is **hardcoded in four places**. When MNQ rolls
+(March → June → September → December), update these manually:
+
+| File              | Line reference          | Change                  |
+|-------------------|-------------------------|-------------------------|
+| `daily_report.py` | `.meta` div, `footer`   | `MNQ 06-26` → `MNQ 09-26` |
+| `hub.py`          | `.meta` div, `footer`   | same                    |
+| `weekly_report.py`| `.meta` div, `footer`   | same                    |
+
+Search for `MNQ` across `src/` to find all occurrences. After editing,
+rebuild with `.\build.ps1`.
+
+---
+
 ## GodZilla CSV Format
 
 Columns written by NinjaTrader 8:
@@ -110,11 +131,13 @@ Trigger, Direction, AtmStrategyName, RealizedPnL,
 SignalCombo, UsedSignals, TradeResult, LastTradeLine
 ```
 
-- Files are named `GodZilla_*.csv`. `GodZuki_*.csv` files are excluded (those are
-  strategy state files, not trade logs).
+- Files are named `GodZilla_*.csv`. `GodZuki_*.csv` files are excluded (strategy
+  state files, not trade logs).
 - `OpenTime` / `CloseTime` format: `%Y-%m-%d %H:%M:%S`
-- Deduplication key: `(Account, OpenTime)` — same trade can appear in multiple
+- Deduplication key: `(Account, OpenTime)` — the same trade can appear in multiple
   CSV files if the strategy was restarted.
+- `is_fast` flag: trades closed in ≤ 10 seconds are marked fast (ATM take-profit
+  hit immediately). These appear with a ⚡ marker in the trade log table.
 
 ---
 
@@ -124,7 +147,7 @@ SignalCombo, UsedSignals, TradeResult, LastTradeLine
 Session date = the calendar day on which the session **ends**.
 
 ```
-Trade open 22:10 on Tuesday  →  session date Wednesday
+Trade open 22:10 on Tuesday   →  session date Wednesday
 Trade open 09:45 on Wednesday →  session date Wednesday
 ```
 
@@ -132,8 +155,7 @@ Weekend guardrail in `get_report_date()`:
 - Saturday → preceding Friday
 - Sunday   → preceding Friday
 
-This means `MONARCH.exe` can be scheduled daily (Mon–Sun) without creating
-blank weekend reports.
+`MONARCH.exe` can be scheduled daily (Mon–Sun) without creating blank weekend reports.
 
 ---
 
@@ -152,8 +174,58 @@ NinjaTrader 8\
 ```
 
 - Hub (`CastleBravo.html`) lives one level **above** `reports/`.
-- Daily/weekly reports link back to hub via `../CastleBravo.html`.
-- Hub links to reports via relative `reports/daily_YYYYMMDD.html`.
+- Daily/weekly reports link back to hub via the constant `HUB_REL = '../CastleBravo.html'`
+  defined at the top of `daily_report.py` and `weekly_report.py`.
+- Hub links to reports via relative paths `reports/daily_YYYYMMDD.html`.
+
+---
+
+## Report Contents
+
+**Daily report** (`daily_YYYYMMDD.html`) sections:
+- KPI grid: Net P&L, Win Rate, Profit Factor, Avg Win, Avg Loss, R:R, Longs, Shorts
+- Account breakdown (one card per live account)
+- Trade log table (time, date, account, direction, duration, grade, KO flag, signals, result, P&L)
+- Breakdowns: Direction / Signal Grade / KO Signal (bar charts)
+- Signal Combo Analysis (top 10 combos by frequency)
+- Cumulative live performance (all-time KPIs from index)
+
+**Weekly report** (`weekly_YYYYMMDD.html`) sections:
+- Same KPI grid, but aggregated Mon–Fri
+- Per-day summary table
+- Grade and KO breakdowns across the week
+- Cumulative context
+
+**Hub** (`CastleBravo.html`) sections:
+- All-time cumulative KPI grid (includes per-account P&L)
+- Current Recommendations (from `index['recommendations']` — see below)
+- 4-week rolling calendar (clickable cells → daily reports; week totals → weekly reports)
+- Recent Sessions table (last 10 days with live trades)
+
+---
+
+## Recommendations System
+
+`index['recommendations']` is a list of dicts written into `reports/index.json`.
+Currently populated manually (no auto-generation logic). Structure:
+
+```python
+{
+    "type":  "critical" | "warn" | "positive" | "info",
+    "title": "Short headline",
+    "body":  "Longer explanation shown in the hub card."
+}
+```
+
+Visual rendering in the hub:
+- `critical` → red left border
+- `warn`     → yellow left border
+- `positive` → green left border
+- `info`     → blue left border
+
+To add a recommendation, edit `reports/index.json` directly or add generation
+logic to `hub.py` / `daily_report.py` that appends to `index['recommendations']`
+before `save_index()` is called.
 
 ---
 
@@ -169,62 +241,71 @@ MONARCH.exe --dry-run              Preview actions, write nothing
 MONARCH.exe --version              Print version
 ```
 
+`--dry-run` skips log sync and all file writes but still parses trades and
+prints what it would have generated. Safe to run at any time.
+
 ---
 
-## NT8 Folder Detection (config.py)
+## NT8 Folder Detection (`config.py`)
 
 Search order in `find_nt8_folder()`:
 
 1. `--nt8-path` CLI argument
 2. `NT8_PATH` environment variable
-3. Windows registry `HKCU\...\Shell Folders\Personal` + `\NinjaTrader 8`
-   (handles OneDrive folder redirection authoritatively)
+3. Windows registry `HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders\Personal`
+   + `\NinjaTrader 8`  ← the only reliable source when OneDrive redirects Documents
 4. `OneDrive*` subdirectories under `Path.home()`
 5. `~/Documents/NinjaTrader 8` and `C:\Users\<user>\Documents\NinjaTrader 8`
 
+Raises `FileNotFoundError` with a helpful message if none of the above succeed.
+
 ---
 
-## Statistics Computed (log_parser.py)
+## Statistics (`log_parser.py`)
 
 `compute_stats(trades)` returns:
 
-| Key             | Description                              |
-|-----------------|------------------------------------------|
-| `pnl`           | Net P&L (sum of RealizedPnL)             |
-| `trades`        | Total trade count                        |
-| `wins` / `losses` | Count by TradeResult                   |
-| `win_rate`      | wins / trades (0–1)                      |
-| `profit_factor` | gross_win / gross_loss                   |
-| `avg_win` / `avg_loss` | Average per winning/losing trade  |
-| `rr`            | avg_win / avg_loss (reward:risk)         |
-| `long_*` / `short_*` | Breakdown by direction             |
+| Key               | Description                                 |
+|-------------------|---------------------------------------------|
+| `pnl`             | Net P&L (sum of RealizedPnL)                |
+| `trades`          | Total trade count                           |
+| `wins` / `losses` | Count by TradeResult                        |
+| `win_rate`        | wins / trades (0–1)                         |
+| `profit_factor`   | gross_win / gross_loss                      |
+| `avg_win`         | Average P&L of winning trades               |
+| `avg_loss`        | Average absolute loss of losing trades      |
+| `rr`              | avg_win / avg_loss (reward:risk ratio)      |
+| `gross_win`       | Sum of all winning trade P&L                |
+| `gross_loss`      | Absolute sum of all losing trade P&L        |
+| `long_*` / `short_*` | Trades / wins / P&L split by direction  |
 
-Additional breakdowns available:
-- `grade_stats(trades)` — by G3/G4/G5 signal grade
-- `ko_stats(trades)` — with KO vs without KO
-- `combo_stats(trades)` — by SignalCombo (sorted by frequency)
-- `account_stats(trades)` — per APEX account
+Additional breakdown functions:
+- `grade_stats(trades)` — dict keyed by grade string (G3, G4, G5)
+- `ko_stats(trades)` — tuple `(with_ko_stats, without_ko_stats)`
+- `combo_stats(trades)` — list sorted by frequency, each item includes all stats keys plus `combo`
+- `account_stats(trades)` — dict keyed by full APEX account string
 
 ---
 
-## Icon Generation (make_icon.py)
+## Icon Generation (`make_icon.py`)
 
-Run once before building. Generates `monarch.ico` (multi-resolution: 16, 32, 48, 256 px):
+Run once before building (the generated `monarch.ico` is committed to the repo,
+so this only needs to be re-run if you want to redesign the icon).
 
 ```powershell
 python make_icon.py    # auto-installs Pillow if missing
 ```
 
 Design: dark indigo background, rounded rect with indigo border, large white "M"
-with teal glow, small teal dot in lower-right corner. Colors match the HTML
-dark theme in `templates.py`.
+with teal glow, small teal dot in lower-right corner. Sizes: 16, 32, 48, 256 px.
+Colors match the CSS custom properties in `templates.py`.
 
-`build.ps1` passes `--icon monarch.ico` to PyInstaller automatically when the
-file exists; silently skips it if absent.
+`build.ps1` passes `--icon monarch.ico` to PyInstaller when the file exists;
+silently skips it if absent.
 
 ---
 
-## Running from Source (no compile needed)
+## Running from Source
 
 ```powershell
 cd C:\Dev\Kaiju\MONARCH
@@ -233,7 +314,9 @@ python src\monarch.py --backfill       # fill all gaps
 python src\monarch.py --dry-run        # preview only
 ```
 
-The entry point adds `src/` to `sys.path` automatically.
+Any Python version works for running from source. The entry point adds `src/`
+to `sys.path` automatically and detects frozen vs. source execution via
+`sys.frozen`.
 
 ---
 
@@ -246,8 +329,25 @@ Action  : Start a program
 Program : C:\Users\<user>\Documents\NinjaTrader 8\MONARCH\MONARCH.exe
 ```
 
-Friday 5 PM generates both the daily and weekly summary automatically.
+Friday 5 PM automatically generates both the daily and the weekly summary.
 Saturday/Sunday runs are safe (map to Friday, no blank reports created).
+
+---
+
+## Git Workflow Note
+
+The Cowork sandbox can stage files (`git add`) but cannot write to `.git/`
+directly, so **commits and pushes must be run from a local terminal**:
+
+```powershell
+cd C:\Dev\Kaiju
+Remove-Item ".git\index.lock" -Force -ErrorAction SilentlyContinue
+git commit -m "your message"
+git push
+```
+
+If `git add` was already run by the sandbox and you see an `index.lock` error,
+the `Remove-Item` line above clears it.
 
 ---
 
