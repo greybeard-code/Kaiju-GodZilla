@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 NinjaScript C# code for NinjaTrader 8 (NT8). There is no build system, test runner, or linter — all compilation happens inside NT8's built-in editor. The only way to validate code is to paste it into NT8 and compile it there.
 
-**Files must be loaded into NT8** via `Tools → Edit NinjaScript → Indicators` or `Strategies`. NT8 compiles the entire namespace together, so all files in `NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla` are compiled as one unit.
+**Files must be loaded into NT8** via `Tools → Edit NinjaScript → Indicators` or `Strategies`. NT8 compiles the entire namespace together, so all files in `NinjaTrader.NinjaScript.Indicators.GreyBeard` are compiled as one unit.
 
 ---
 
@@ -16,12 +16,27 @@ NinjaScript C# code for NinjaTrader 8 (NT8). There is no build system, test runn
 
 | Namespace | Contents |
 |---|---|
-| `NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla` | All six sub-indicators, GodZuki, and their helper types |
+| `NinjaTrader.NinjaScript.Indicators.GreyBeard` | All six sub-indicators, GodZuki, and their helper types |
 | `NinjaTrader.NinjaScript.Strategies.Playr101` | GodZillaKilla strategy |
 
 **Never change the namespaces.** NT8 uses them for internal serialization of saved chart templates and ATM settings. Renaming breaks all existing user configurations silently.
 
-The default namespace for all new indicators is `NinjaTrader.NinjaScript.Indicators.GreyBeard.KingPanaZilla`. New strategies go under `NinjaTrader.NinjaScript.Strategies.Playr101`.
+The default namespace for all new indicators is `NinjaTrader.NinjaScript.Indicators.GreyBeard`. New strategies go under `NinjaTrader.NinjaScript.Strategies.Playr101`.
+
+---
+
+## Directory Structure
+
+```
+Kaiju/
+├── *.cs              Active NinjaScript source — all indicators and strategies
+├── CLAUDE.md         This file
+├── README.md         Suite overview
+├── documents/        Markdown reference docs only — not loaded by NT8
+├── originals/        Pre-edit file snapshots kept before major changes — never load into NT8
+├── old versions/     Historical releases for rollback reference — never load alongside current files (namespace conflicts)
+└── sound files/      WAV files for audio alerts — must be copied to NT8's sounds directory to appear in the properties picker
+```
 
 ---
 
