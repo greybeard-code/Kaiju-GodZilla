@@ -4,6 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## Author
+
+**GreyBeard** — greybeard@greybeardconsulting.net — [greybeardconsulting.net](https://greybeardconsulting.net)
+
+---
+
 ## What This Is
 
 NinjaScript C# code for NinjaTrader 8 (NT8). There is no build system, test runner, or linter — all compilation happens inside NT8's built-in editor. The only way to validate code is to paste it into NT8 and compile it there.
