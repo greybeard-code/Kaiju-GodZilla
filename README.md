@@ -59,6 +59,10 @@ All six expose a `Signal_Trade` series using a consistent **−1 / 0 / +1** (or 
 2. Add **GodZuki** to a chart to verify signal output before enabling live trading.
 3. Add **GodZillaKilla** to a separate chart and configure your ATM template, signal set, and session times.
 
+**Upgrading from a manual install?** Run the cleanup script first to remove any misplaced files before importing the new package.
+
+→ [Remove-GodZilla-README.md](Remove-GodZilla-README.md)
+
 ---
 
 ## File Index
