@@ -1,6 +1,6 @@
 # GodZillaKilla — ATM Trading Strategy
 
-**Version:** 1.7.1
+**Version:** 1.7.2
 **Namespace:** `NinjaTrader.NinjaScript.Strategies.Playr101`
 **Author:** Playr101
 **Credits:** GreyBeard, ninZa.co, RenkoKings, ES, rbro112
@@ -13,6 +13,7 @@ GodZillaKilla is a NinjaTrader 8 strategy that reads signals from the six GodZil
 
 | Version | Summary |
 |---|---|
+| **1.7.2** | Session PnL reset now fires from `Bars.IsFirstBarOfSession` on the primary bar series at the correct futures session open (e.g. 1700 CST for ES), not from the tick series at midnight. Martingale recovery blocked and `EnableMartingaleOnStopLoss` hidden in FixedTicks mode. `NC_Brush` hidden when `UseNCSignals = false`. NobleCloud Properties panel labels renamed from "NC:" to "NobleCloud:". |
 | **1.7.1** | `LogEnabled` defaults to true (required for MONARCH trade ingestion). ATM strategy field now shows a dropdown populated from ATM templates on disk (`FriendlyAtmConverter`). Descriptions added to all Properties panel fields. Namespace import updated to `GreyBeard`. Sub-indicator enums and category attributes moved to namespace scope. |
 | **1.7.0** | Reentrancy guard added to `FlattenEverything` (`_flattenLock` / `_flattenInProgress`) to prevent double-flatten on rapid tick sequences. `Account.Positions` iteration wrapped in `lock (Account.Positions)`. |
 | **1.6.9** | `gbBarStatus` sub-indicator added with `ShowBarStatusIndicator` property. Dashboard auto-sizing: HUD box width now measured dynamically from text content via `MeasureHudTextWidth()` using DirectWrite TextLayout — eliminates text clipping at all sizes. Properties panel reorganized: "Display" split into "Dashboard Display" / "Indicator Display" / "ATM Marker Display". `IsExitOnSessionCloseStrategy` default changed to true. `UseNCSignals` default changed to false. |

@@ -3,7 +3,7 @@ MONARCH Intelligence Report System
 ====================================
 Standalone Windows executable entry point.
 
-Compiled with PyInstaller (see build.bat) into a single MONARCH.exe
+Compiled with Nuitka (see build.ps1) into a single MONARCH.exe
 that requires no Python installation on the target machine.
 
 Usage:
@@ -26,7 +26,7 @@ from pathlib import Path
 
 # ── ensure src/ is on the path when running from source ──────────────────────
 if getattr(sys, 'frozen', False):
-    # Running as compiled exe – PyInstaller sets sys._MEIPASS
+    # Running as compiled exe (Nuitka sets sys.frozen = True)
     _src = Path(sys.executable).parent
 else:
     _src = Path(__file__).parent

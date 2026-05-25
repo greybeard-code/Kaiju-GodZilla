@@ -8,7 +8,7 @@ Guidance for working with this Python sub-project inside the Kaiju repository.
 
 A standalone Windows executable (`MONARCH.exe`) that generates HTML trade reports
 from NinjaTrader 8 GodZilla CSV logs. It requires no Python on the target machine
-once compiled with PyInstaller.
+once compiled with Nuitka.
 
 Source lives at `C:\Dev\Kaiju\MONARCH\src\`.
 Compiled exe deploys to `%USERPROFILE%\Documents\NinjaTrader 8\MONARCH\MONARCH.exe`.
@@ -19,20 +19,20 @@ Compiled exe deploys to `%USERPROFILE%\Documents\NinjaTrader 8\MONARCH\MONARCH.e
 
 The machine runs **pyenv-win** with multiple Python versions:
 
-| Command   | Version | Owns PyInstaller? |
-|-----------|---------|-------------------|
-| `python`  | 3.14.3  | No                |
-| (pyenv)   | 3.10.5  | Yes – PyInstaller 6.20.0 is installed here |
+| Command   | Version | Owns Nuitka? |
+|-----------|---------|--------------|
+| `python`  | 3.14.3  | No           |
+| (pyenv)   | 3.10.5  | Yes – Nuitka is installed here |
 
-**Never invoke PyInstaller with the default `python` command.** The build scripts
-derive the correct interpreter from `pip show pyinstaller`'s `Location:` field
+**Never invoke Nuitka with the default `python` command.** The build script
+derives the correct interpreter from `pip show nuitka`'s `Location:` field
 (site-packages → up two dirs → `python.exe`).
 
 Running from source (`python src\monarch.py`) works with any Python – the
-3.10.5 restriction applies only to PyInstaller compilation.
+3.10.5 restriction applies only to Nuitka compilation.
 
-The canonical build tool is `build.ps1` (PowerShell). `build.bat` also exists
-as an alternative but is less reliable in pyenv environments.
+The canonical build tool is `build.ps1` (PowerShell). `build.bat` is a thin
+wrapper that launches `build.ps1` via PowerShell for cmd.exe environments.
 
 ---
 
@@ -47,30 +47,43 @@ python make_icon.py        # auto-installs Pillow; writes monarch.ico
 ```
 
 `build.ps1` does:
-1. Locates the Python 3.10.5 interpreter that owns PyInstaller
-2. Removes `enum34` if installed (incompatible with PyInstaller 6.x)
-3. Cleans previous `build/`, `dist/`, `MONARCH.spec`
-4. Runs PyInstaller `--onefile --console --icon monarch.ico` (icon optional)
+1. Locates the Python 3.10.5 interpreter that owns Nuitka
+2. Reads `VERSION` from `src/config.py` for exe metadata
+3. Cleans previous `dist/`
+4. Runs Nuitka `--onefile --windows-console-mode=force --icon monarch.ico` (icon optional)
 5. Copies `dist\MONARCH.exe` to `NinjaTrader 8\MONARCH\MONARCH.exe`
 
-`build/`, `dist/`, and `*.spec` are in `.gitignore` – never commit them.
+`dist/` is in `.gitignore` – never commit it.
+
+**First build only:** Nuitka downloads MinGW-w64 (~120 MB, one-time) if Visual
+Studio Build Tools are not already installed. Subsequent builds skip this step.
+Build time: ~2–5 min on first compile, ~30–90 sec on rebuilds.
+
+`make_version_file.py` is **no longer used** – `build.ps1` extracts the version
+from `config.py` and passes it directly to Nuitka as `--file-version` flags.
 
 ### Known build pitfalls
 
-- **`enum34`**: Must not be installed in the 3.10.5 environment. PyInstaller 6.x
-  refuses to run with it. `build.ps1` auto-removes it; if it reappears:
+- **C compiler required**: Nuitka compiles Python to C and then to native code.
+  On Windows it needs either MSVC (Visual Studio Build Tools) or MinGW-w64.
+  With `--assume-yes-for-downloads`, Nuitka auto-downloads MinGW-w64 if MSVC
+  is absent. If the download fails, install Build Tools manually:
+  `winget install Microsoft.VisualStudio.2022.BuildTools`
+
+- **Nuitka not found under the right Python**: If `pip show nuitka` resolves to
+  the wrong interpreter, install it explicitly:
   ```powershell
-  & "C:\Users\dcjon\.pyenv\pyenv-win\versions\3.10.5\python.exe" -m pip uninstall enum34
+  & "C:\Users\dcjon\.pyenv\pyenv-win\versions\3.10.5\python.exe" -m pip install nuitka
   ```
 
 - **`$ErrorActionPreference = 'Stop'` and pip**: Native commands writing to stderr
-  throw terminating errors under Stop mode. The blocklist check in `build.ps1`
-  temporarily switches to `Continue` around `pip show` calls – keep this guard.
+  throw terminating errors under Stop mode. The `pip show` calls in `build.ps1`
+  use `2>&1` to merge stderr into stdout – keep this pattern if you modify the script.
 
 - **Quoted exe paths in PowerShell**: Use the call operator `&`:
   ```powershell
-  & "C:\path\to\python.exe" -m pip ...   # correct
-  "C:\path\to\python.exe" -m pip ...     # wrong – tries to run a string
+  & "C:\path\to\python.exe" -m nuitka ...   # correct
+  "C:\path\to\python.exe" -m nuitka ...     # wrong – tries to run a string
   ```
 
 ---

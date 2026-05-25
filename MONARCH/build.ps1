@@ -4,8 +4,11 @@
     MONARCH Intelligence Report System - Build Script
 
 .DESCRIPTION
-    Compiles src/monarch.py into a single standalone exe using PyInstaller,
+    Compiles src/monarch.py into a single standalone exe using Nuitka,
     then deploys it to NinjaTrader 8\MONARCH\.
+
+    First-time builds take 2-5 minutes; Nuitka auto-downloads a C compiler
+    (MinGW-w64) if Visual Studio Build Tools are not installed.
 
 .EXAMPLE
     .\build.ps1
@@ -15,7 +18,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $SrcEntry  = Join-Path $PSScriptRoot 'src\monarch.py'
-$SrcPaths  = Join-Path $PSScriptRoot 'src'
+$DistDir   = Join-Path $PSScriptRoot 'dist'
 $DeployDir = Join-Path $env:USERPROFILE 'Documents\NinjaTrader 8\MONARCH'
 
 Write-Host ""
@@ -27,23 +30,23 @@ Write-Host "  Source  : $SrcEntry"
 Write-Host "  Deploy  : $DeployDir\MONARCH.exe"
 Write-Host ""
 
-# ── Find the Python that owns PyInstaller ─────────────────────────────────────
-Write-Host " [CHECK] Locating PyInstaller..." -ForegroundColor Yellow
+# ── Find the Python that owns Nuitka ──────────────────────────────────────────
+Write-Host " [CHECK] Locating Nuitka..." -ForegroundColor Yellow
 
-$pipInfo = pip show pyinstaller 2>&1
+$pipInfo = pip show nuitka 2>&1
 if ($LASTEXITCODE -ne 0) {
-    Write-Host " [INFO] PyInstaller not found. Installing..." -ForegroundColor Yellow
-    pip install pyinstaller
+    Write-Host " [INFO] Nuitka not found. Installing..." -ForegroundColor Yellow
+    pip install nuitka
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "pip install pyinstaller failed. Is pip in your PATH?"
+        Write-Error "pip install nuitka failed. Is pip in your PATH?"
     }
-    $pipInfo = pip show pyinstaller 2>&1
+    $pipInfo = pip show nuitka 2>&1
 }
 
 # Parse the Location line to find the site-packages folder
 $locationLine = $pipInfo | Where-Object { $_ -match '^Location:' }
 if (-not $locationLine) {
-    Write-Error "Could not determine PyInstaller location from: $pipInfo"
+    Write-Error "Could not determine Nuitka location from: $pipInfo"
 }
 $sitePkgs = ($locationLine -replace '^Location:\s*', '').Trim()
 # python.exe is two levels up from site-packages (Lib/site-packages -> Lib -> root)
@@ -56,78 +59,60 @@ if (-not (Test-Path $pyExe)) {
     $pyExe = 'python'
 }
 
-$pyVer   = & $pyExe --version 2>&1
-$piVer   = ($pipInfo | Where-Object { $_ -match '^Version:' }) -replace '^Version:\s*',''
-Write-Host "  Python     : $pyVer  ($pyExe)" -ForegroundColor Green
-Write-Host "  PyInstaller: $piVer" -ForegroundColor Green
+$pyVer = & $pyExe --version 2>&1
+$niVer = ($pipInfo | Where-Object { $_ -match '^Version:' }) -replace '^Version:\s*', ''
+Write-Host "  Python : $pyVer  ($pyExe)" -ForegroundColor Green
+Write-Host "  Nuitka : $niVer" -ForegroundColor Green
 Write-Host ""
 
-# ── Remove packages known to break PyInstaller ───────────────────────────────
-$blocklist = @('enum34')
-foreach ($pkg in $blocklist) {
-    $ErrorActionPreference = 'Continue'
-    $null = & $pyExe -m pip show $pkg 2>&1
-    $pkgFound = ($LASTEXITCODE -eq 0)
-    $ErrorActionPreference = 'Stop'
-    if ($pkgFound) {
-        Write-Host " [FIX] Removing incompatible package '$pkg'..." -ForegroundColor Yellow
-        $ErrorActionPreference = 'Continue'
-        & $pyExe -m pip uninstall $pkg -y 2>&1 | Out-Null
-        $ErrorActionPreference = 'Stop'
-        Write-Host "       Done." -ForegroundColor Green
-    }
-}
+# ── Extract version from config.py ────────────────────────────────────────────
+$configFile    = Join-Path $PSScriptRoot 'src\config.py'
+$configContent = Get-Content $configFile -Raw
+$appVersion    = if ($configContent -match 'VERSION\s*=\s*"([^"]+)"') { $Matches[1] } else { '1.0.0' }
+$vParts        = $appVersion.Split('.')
+while ($vParts.Count -lt 4) { $vParts += '0' }
+$winVersion    = ($vParts[0..3]) -join '.'
+Write-Host "  Version: $appVersion  (exe metadata: $winVersion)" -ForegroundColor Green
+Write-Host ""
 
-# ── Clean previous build artefacts ────────────────────────────────────────────
+# ── Clean previous build artifacts ────────────────────────────────────────────
 Write-Host " [CLEAN] Removing previous build..." -ForegroundColor Yellow
-@('build', 'dist', 'MONARCH.spec') | ForEach-Object {
-    $p = Join-Path $PSScriptRoot $_
-    if (Test-Path $p) { Remove-Item $p -Recurse -Force }
-}
+if (Test-Path $DistDir) { Remove-Item $DistDir -Recurse -Force }
+New-Item -ItemType Directory -Path $DistDir | Out-Null
 
 # ── Optional icon ─────────────────────────────────────────────────────────────
-$IconArg  = @()
+$IconArgs = @()
 $IconFile = Join-Path $PSScriptRoot 'monarch.ico'
 if (Test-Path $IconFile) {
     Write-Host "  Icon: $IconFile" -ForegroundColor Green
-    $IconArg = @('--icon', $IconFile)
+    $IconArgs = @("--windows-icon-from-ico=$IconFile")
 } else {
     Write-Host "  Icon: none  (run: python make_icon.py  to generate monarch.ico)" -ForegroundColor Yellow
-}
-
-# ── Generate Windows exe version info ─────────────────────────────────────────
-$VerArg      = @()
-$VerScript   = Join-Path $PSScriptRoot 'make_version_file.py'
-$VerInfoFile = Join-Path $PSScriptRoot 'version_info.txt'
-if (Test-Path $VerScript) {
-    Write-Host "  Generating version_info.txt..." -ForegroundColor Yellow
-    & $pyExe $VerScript
-    if ((Test-Path $VerInfoFile) -and ($LASTEXITCODE -eq 0)) {
-        Write-Host "  Version info: $VerInfoFile" -ForegroundColor Green
-        $VerArg = @('--version-file', $VerInfoFile)
-    } else {
-        Write-Host "  [warn] make_version_file.py failed - skipping version info" -ForegroundColor Yellow
-    }
-} else {
-    Write-Host "  Version info: none (make_version_file.py not found)" -ForegroundColor Yellow
 }
 Write-Host ""
 
 # ── Compile ───────────────────────────────────────────────────────────────────
-Write-Host " [BUILD] Compiling MONARCH.exe (30-60 seconds)..." -ForegroundColor Yellow
+Write-Host " [BUILD] Compiling MONARCH.exe with Nuitka..." -ForegroundColor Yellow
+Write-Host "         First run downloads a C compiler and takes 2-5 minutes." -ForegroundColor DarkGray
 Write-Host ""
 
-& $pyExe -m PyInstaller `
-    --onefile `
-    --console `
-    --name MONARCH `
-    --paths $SrcPaths `
-    @IconArg `
-    @VerArg `
-    $SrcEntry
+$NuitkaArgs = @(
+    '--onefile',
+    '--windows-console-mode=force',
+    "--output-filename=MONARCH.exe",
+    "--output-dir=$DistDir",
+    '--company-name=GreyBeard',
+    "--product-name=MONARCH Intelligence Report System",
+    "--file-version=$winVersion",
+    "--product-version=$winVersion",
+    "--copyright=(c) GreyBeard - greybeardconsulting.net",
+    '--assume-yes-for-downloads'
+) + $IconArgs + @($SrcEntry)
+
+& $pyExe -m nuitka @NuitkaArgs
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "PyInstaller compilation failed (exit code $LASTEXITCODE)."
+    Write-Error "Nuitka compilation failed (exit code $LASTEXITCODE)."
 }
 
 # ── Deploy ────────────────────────────────────────────────────────────────────
@@ -139,7 +124,7 @@ if (-not (Test-Path $DeployDir)) {
     Write-Host "          Created $DeployDir"
 }
 
-Copy-Item (Join-Path $PSScriptRoot 'dist\MONARCH.exe') `
+Copy-Item (Join-Path $DistDir 'MONARCH.exe') `
           (Join-Path $DeployDir 'MONARCH.exe') -Force
 
 Write-Host ""
