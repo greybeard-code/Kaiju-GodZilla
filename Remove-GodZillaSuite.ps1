@@ -55,17 +55,29 @@ if (-not (Test-Path $Destination)) {
 
 # ── Search ────────────────────────────────────────────────────────────────────
 
-Write-Host "Searching: $SearchRoot"
+Write-Host "Searching: $SearchRoot`n"
 
-$Found = Get-ChildItem -Path $SearchRoot -Recurse -File -ErrorAction SilentlyContinue |
-         Where-Object { $TargetFiles -contains $_.Name }
+# Search per filename using -Filter so NT8 subdirectory permission errors
+# on one file do not suppress results for the others.
+$FoundList = [System.Collections.Generic.List[System.IO.FileInfo]]::new()
 
-if ($Found.Count -eq 0) {
+foreach ($Name in $TargetFiles) {
+    $Hits = Get-ChildItem -Path $SearchRoot -Recurse -File -Filter $Name -ErrorAction SilentlyContinue
+    if ($Hits) {
+        foreach ($Hit in $Hits) {
+            Write-Host "  Found: $($Hit.FullName)"
+            $FoundList.Add($Hit)
+        }
+    }
+}
+
+if ($FoundList.Count -eq 0) {
     Write-Host 'No matching files found.'
     exit 0
 }
 
-Write-Host "Found $($Found.Count) file(s).`n"
+Write-Host "`nFound $($FoundList.Count) file(s).`n"
+$Found = $FoundList
 
 # ── Move ──────────────────────────────────────────────────────────────────────
 
