@@ -52,6 +52,7 @@ Sub-indicators:
     gbThunderZilla.cs
     gbNobleCloud.cs
     gbNobelCloud.cs          (alternate spelling found on some installs)
+    NewsSignals.cs
 
 Wrapper / strategy files (retired):
     gbKingPanaZilla.cs
