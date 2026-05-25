@@ -32,7 +32,8 @@ $TargetFiles = @(
     'gbKingPanaZilla.cs',
     'gbKingPanaZillaKillah.cs',
     'GodZilla.cs',
-    'GodZillaKilla.cs'
+    'GodZillaKilla.cs',
+    'GodZuki.cs'
 )
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
