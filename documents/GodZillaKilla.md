@@ -1,9 +1,9 @@
 # GodZillaKilla — ATM Trading Strategy
 
-**Version:** 1.6.6
+**Version:** 1.7.1
 **Namespace:** `NinjaTrader.NinjaScript.Strategies.Playr101`
 **Author:** Playr101
-**Credits:** GreyBeard, ninZa.co, RenkoKings, ES, rbro999
+**Credits:** GreyBeard, ninZa.co, RenkoKings, ES, rbro112
 
 GodZillaKilla is a NinjaTrader 8 strategy that reads signals from the six GodZilla Suite sub-indicators and executes trades using either NT8 ATM templates or strategy-managed Fixed-Ticks orders. It is designed for live and replay trading on any chart type.
 
@@ -13,7 +13,10 @@ GodZillaKilla is a NinjaTrader 8 strategy that reads signals from the six GodZil
 
 | Version | Summary |
 |---|---|
-| **1.6.6** | NobleCloud integration as 6th signal source (Set 1 and Set 2). OnOrderUpdate rejection handling for FixedTicks mode. RealtimeErrorHandling changed to StopCancelClose. IsExitOnSessionCloseStrategy set to false. Defense #3/#8 extended to martingale ATM path. WPF button click handler unsubscribe on disable (defense #5). _tradeMap upgraded to ConcurrentDictionary. FixedTicks PnL baseline for fresh-start accuracy. SafeSignalRead applied to all six signals. Indicator null diagnostic. Open PnL HUD row conditional on UseUnrealizedPnl. Entry/Exit labels anchor to bar High/Low. Confluence stats replace per-group stats. CSV log expanded to 14 columns. Properties panel: PA expanded to PanaKanal, NC expanded to NobleCloud. UseNCSignals defaults to true. |
+| **1.7.1** | `LogEnabled` defaults to true (required for MONARCH trade ingestion). ATM strategy field now shows a dropdown populated from ATM templates on disk (`FriendlyAtmConverter`). Descriptions added to all Properties panel fields. Namespace import updated to `GreyBeard`. Sub-indicator enums and category attributes moved to namespace scope. |
+| **1.7.0** | Reentrancy guard added to `FlattenEverything` (`_flattenLock` / `_flattenInProgress`) to prevent double-flatten on rapid tick sequences. `Account.Positions` iteration wrapped in `lock (Account.Positions)`. |
+| **1.6.9** | `gbBarStatus` sub-indicator added with `ShowBarStatusIndicator` property. Dashboard auto-sizing: HUD box width now measured dynamically from text content via `MeasureHudTextWidth()` using DirectWrite TextLayout — eliminates text clipping at all sizes. Properties panel reorganized: "Display" split into "Dashboard Display" / "Indicator Display" / "ATM Marker Display". `IsExitOnSessionCloseStrategy` default changed to true. `UseNCSignals` default changed to false. |
+| **1.6.6** | NobleCloud integration as 6th signal source (Set 1 and Set 2). OnOrderUpdate rejection handling for FixedTicks mode. RealtimeErrorHandling changed to StopCancelClose. Defense #3/#8 extended to martingale ATM path. WPF button click handler unsubscribe on disable (defense #5). _tradeMap upgraded to ConcurrentDictionary. FixedTicks PnL baseline for fresh-start accuracy. SafeSignalRead applied to all six signals. Indicator null diagnostic. Open PnL HUD row conditional on UseUnrealizedPnl. Entry/Exit labels anchor to bar High/Low. Confluence stats replace per-group stats. CSV log expanded to 14 columns. |
 | 1.6.5 | Fixed CategoryOrder collision (Display/NobleCloud both at 12). Fixed CSV log header to match 14-column output. Fixed martingale close path to use `WriteTradeLogRecord`. Applied Defense #8 `WriteTradeLogRecord` patches to both normal ATM and martingale ATM stale-ID paths. |
 | 1.6.4 | Internal bump by Playr101. |
 | 1.6.3 | Added NobleCloud (NC) as sixth signal indicator. Defense #8 mid-trade staleness detection. |
@@ -23,7 +26,7 @@ GodZillaKilla is a NinjaTrader 8 strategy that reads signals from the six GodZil
 ## Order Management Modes
 
 ### ATM Strategy Mode
-Submits a market entry order and immediately attaches a pre-configured NT8 ATM template for stop-loss, profit target, and trailing stop management. ATM templates are selected from the NT8 ATM library at configuration time.
+Submits a market entry order and immediately attaches a pre-configured NT8 ATM template for stop-loss, profit target, and trailing stop management. ATM templates are selected from the NT8 ATM library at configuration time — the ATM Strategy field shows a dropdown populated from templates on disk.
 
 - Entry is via `AtmStrategyCreate` at bar close (pending signal queued on bar 0, executed on bar 1 tick series)
 - Supports a one-time **Martingale Recovery** entry in the opposite direction after a stop-loss, using a separate ATM template
@@ -100,6 +103,8 @@ GodZillaKilla includes eight layered defenses against NT8 lifecycle edge cases:
 
 **Defense #8 detail:** Fires inside `EvictStaleAtmIdsIfTimedOut` on every tick. Detects a mismatch between the ATM reporting Flat and the account still holding a position. `WriteTradeLogRecord` is called **before** clearing `_atmPositionConfirmed` — both the normal ATM path and the martingale ATM path are protected. The estimated PnL from `dailyUnrealizedPnL` is used for the forced-close log record.
 
+**FlattenEverything reentrancy guard (v1.7.0+):** `_flattenInProgress` flag and `_flattenLock` prevent double-flatten when rapid ticks fire the method concurrently. The inner check inside the lock ensures thread safety under NT8's mixed threading model.
+
 ---
 
 ## Dashboard (HUD)
@@ -114,6 +119,8 @@ The SharpDX overlay panel shows:
 - Current trade status (IDLE / IN POSITION)
 - Last trade summary with PnL
 - Optional signal tracking stats (per-indicator win/loss counts and confluence combo stats)
+
+The HUD box auto-sizes to fit its content — width is measured dynamically using DirectWrite TextLayout so text is never clipped regardless of font size or dashboard size setting.
 
 Position: configurable (`TopLeft` / `TopRight` / `BottomLeft` / `BottomRight` / `Center` / `Hidden`).
 Size: `Tiny` / `Small` / `Normal` / `Large` / `Huge`.
@@ -140,14 +147,14 @@ An on-chart WPF button panel (ARM LONG / ARM SHORT / REV / AUTO / CLOSE) allows 
 
 ## CSV Trade Log
 
-When `LogEnabled = true`, a CSV file is created at `State.DataLoaded`:
+When `LogEnabled = true` (default), a CSV file is created at `State.DataLoaded`:
 
 **Filename:** `GodZilla_[AccountName]_YYYYMMDD_HHmmss.csv`
 
 **Columns (14):**
 `OpenTime, Account, Instrument, OpenPrice, Qty, CloseTime, Trigger, Direction, AtmStrategyName, RealizedPnL, SignalCombo, UsedSignals, TradeResult, LastTradeLine`
 
-One row is written per closed trade. Defense #8 forced-close events also write a log row using the estimated unrealized PnL at time of detection.
+One row is written per closed trade. Defense #8 forced-close events also write a log row using the estimated unrealized PnL at time of detection. These CSV files are read by the MONARCH Intelligence Report System to generate daily and weekly performance reports.
 
 ---
 
@@ -160,8 +167,10 @@ One row is written per closed trade. Defense #8 forced-close events also write a
 | Filters | `EnableEmaFilter`, `EmaShortPeriod`, `EmaLongPeriod`, `EnableNewsFilter` |
 | Session | `EnableTF1`…`EnableTF3`, `StartTime1`…`EndTime3`, `EnableSkipTimeWindow` |
 | Risk | `EnableDailyProfitTarget`, `DailyProfitTarget`, `EnableDailyLossLimit`, `DailyLossLimit` |
-| Display | `ShowDashboard`, `DashboardPosition`, `DashboardSize`, `ShowEntryExitMarkers` |
-| Audio | `EnableSignalAudioAlerts`, `IndividualSignalAlertSound`, `GroupSignalAlertSound` |
+| Dashboard Display | `ShowDashboard`, `DashboardPosition`, `DashboardSize` |
+| Indicator Display | `ShowBarStatusIndicator` |
+| ATM Marker Display | `ShowEntryExitMarkers` |
+| Audio Alerts | `EnableSignalAudioAlerts`, `IndividualSignalAlertSound`, `GroupSignalAlertSound` |
 | Logging | `LogEnabled`, `EnableDebug` |
 
 ---

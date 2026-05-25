@@ -1,5 +1,5 @@
 """
-MONARCH Intelligence Report System — Date Utilities
+MONARCH Intelligence Report System – Date Utilities
 =====================================================
 Trading-day boundary logic, week math, and missing-report detection.
 
@@ -88,10 +88,8 @@ def fmt_weekday_full(d: date) -> str:
 # ── Missing-report detection ──────────────────────────────────────────────────
 
 def get_trading_days_with_data(all_trades: list) -> List[date]:
-    """Return sorted list of session dates that have at least one live trade."""
-    from config import LIVE_ACCOUNTS
-    live_sessions = {t['session'] for t in all_trades if t['account'] in LIVE_ACCOUNTS}
-    return sorted(live_sessions)
+    """Return sorted list of session dates that have at least one trade."""
+    return sorted({t['session'] for t in all_trades})
 
 
 def get_missing_daily_dates(reports_dir: Path, trading_days: List[date]) -> List[date]:

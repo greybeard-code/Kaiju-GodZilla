@@ -94,6 +94,23 @@ if (Test-Path $IconFile) {
 } else {
     Write-Host "  Icon: none  (run: python make_icon.py  to generate monarch.ico)" -ForegroundColor Yellow
 }
+
+# ── Generate Windows exe version info ─────────────────────────────────────────
+$VerArg      = @()
+$VerScript   = Join-Path $PSScriptRoot 'make_version_file.py'
+$VerInfoFile = Join-Path $PSScriptRoot 'version_info.txt'
+if (Test-Path $VerScript) {
+    Write-Host "  Generating version_info.txt..." -ForegroundColor Yellow
+    & $pyExe $VerScript
+    if ((Test-Path $VerInfoFile) -and ($LASTEXITCODE -eq 0)) {
+        Write-Host "  Version info: $VerInfoFile" -ForegroundColor Green
+        $VerArg = @('--version-file', $VerInfoFile)
+    } else {
+        Write-Host "  [warn] make_version_file.py failed - skipping version info" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "  Version info: none (make_version_file.py not found)" -ForegroundColor Yellow
+}
 Write-Host ""
 
 # ── Compile ───────────────────────────────────────────────────────────────────
@@ -106,6 +123,7 @@ Write-Host ""
     --name MONARCH `
     --paths $SrcPaths `
     @IconArg `
+    @VerArg `
     $SrcEntry
 
 if ($LASTEXITCODE -ne 0) {

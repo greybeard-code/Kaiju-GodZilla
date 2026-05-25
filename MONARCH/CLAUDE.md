@@ -1,4 +1,4 @@
-# CLAUDE.md — MONARCH Intelligence Report System
+# CLAUDE.md – MONARCH Intelligence Report System
 
 Guidance for working with this Python sub-project inside the Kaiju repository.
 
@@ -15,20 +15,20 @@ Compiled exe deploys to `%USERPROFILE%\Documents\NinjaTrader 8\MONARCH\MONARCH.e
 
 ---
 
-## Python Environment — Critical
+## Python Environment – Critical
 
 The machine runs **pyenv-win** with multiple Python versions:
 
 | Command   | Version | Owns PyInstaller? |
 |-----------|---------|-------------------|
 | `python`  | 3.14.3  | No                |
-| (pyenv)   | 3.10.5  | Yes — PyInstaller 6.20.0 is installed here |
+| (pyenv)   | 3.10.5  | Yes – PyInstaller 6.20.0 is installed here |
 
 **Never invoke PyInstaller with the default `python` command.** The build scripts
 derive the correct interpreter from `pip show pyinstaller`'s `Location:` field
 (site-packages → up two dirs → `python.exe`).
 
-Running from source (`python src\monarch.py`) works with any Python — the
+Running from source (`python src\monarch.py`) works with any Python – the
 3.10.5 restriction applies only to PyInstaller compilation.
 
 The canonical build tool is `build.ps1` (PowerShell). `build.bat` also exists
@@ -53,7 +53,7 @@ python make_icon.py        # auto-installs Pillow; writes monarch.ico
 4. Runs PyInstaller `--onefile --console --icon monarch.ico` (icon optional)
 5. Copies `dist\MONARCH.exe` to `NinjaTrader 8\MONARCH\MONARCH.exe`
 
-`build/`, `dist/`, and `*.spec` are in `.gitignore` — never commit them.
+`build/`, `dist/`, and `*.spec` are in `.gitignore` – never commit them.
 
 ### Known build pitfalls
 
@@ -65,12 +65,12 @@ python make_icon.py        # auto-installs Pillow; writes monarch.ico
 
 - **`$ErrorActionPreference = 'Stop'` and pip**: Native commands writing to stderr
   throw terminating errors under Stop mode. The blocklist check in `build.ps1`
-  temporarily switches to `Continue` around `pip show` calls — keep this guard.
+  temporarily switches to `Continue` around `pip show` calls – keep this guard.
 
 - **Quoted exe paths in PowerShell**: Use the call operator `&`:
   ```powershell
   & "C:\path\to\python.exe" -m pip ...   # correct
-  "C:\path\to\python.exe" -m pip ...     # wrong — tries to run a string
+  "C:\path\to\python.exe" -m pip ...     # wrong – tries to run a string
   ```
 
 ---
@@ -105,22 +105,6 @@ Sim accounts (names starting with `'Sim'`) are parsed from CSVs but flagged
 
 ---
 
-## Contract Roll — Action Required Each Quarter
-
-The futures contract ticker is **hardcoded in four places**. When MNQ rolls
-(March → June → September → December), update these manually:
-
-| File              | Line reference          | Change                  |
-|-------------------|-------------------------|-------------------------|
-| `daily_report.py` | `.meta` div, `footer`   | `MNQ 06-26` → `MNQ 09-26` |
-| `hub.py`          | `.meta` div, `footer`   | same                    |
-| `weekly_report.py`| `.meta` div, `footer`   | same                    |
-
-Search for `MNQ` across `src/` to find all occurrences. After editing,
-rebuild with `.\build.ps1`.
-
----
-
 ## GodZilla CSV Format
 
 Columns written by NinjaTrader 8:
@@ -134,7 +118,7 @@ SignalCombo, UsedSignals, TradeResult, LastTradeLine
 - Files are named `GodZilla_*.csv`. `GodZuki_*.csv` files are excluded (strategy
   state files, not trade logs).
 - `OpenTime` / `CloseTime` format: `%Y-%m-%d %H:%M:%S`
-- Deduplication key: `(Account, OpenTime)` — the same trade can appear in multiple
+- Deduplication key: `(Account, OpenTime)` – the same trade can appear in multiple
   CSV files if the strategy was restarted.
 - `is_fast` flag: trades closed in ≤ 10 seconds are marked fast (ATM take-profit
   hit immediately). These appear with a ⚡ marker in the trade log table.
@@ -184,23 +168,24 @@ NinjaTrader 8\
 
 **Daily report** (`daily_YYYYMMDD.html`) sections:
 - KPI grid: Net P&L, Win Rate, Profit Factor, Avg Win, Avg Loss, R:R, Longs, Shorts
-- Account breakdown (one card per live account)
+- Account breakdown (one card per account – all accounts, including Sim)
 - Trade log table (time, date, account, direction, duration, grade, KO flag, signals, result, P&L)
 - Breakdowns: Direction / Signal Grade / KO Signal (bar charts)
 - Signal Combo Analysis (top 10 combos by frequency)
-- Cumulative live performance (all-time KPIs from index)
+- Cumulative performance (all-time KPIs from index)
 
 **Weekly report** (`weekly_YYYYMMDD.html`) sections:
 - Same KPI grid, but aggregated Mon–Fri
 - Per-day summary table
-- Grade and KO breakdowns across the week
-- Cumulative context
+- Account breakdown (one card per account)
+- Biggest Wins / Biggest Losses tables
+- Grade and Direction breakdowns across the week
 
 **Hub** (`CastleBravo.html`) sections:
-- All-time cumulative KPI grid (includes per-account P&L)
-- Current Recommendations (from `index['recommendations']` — see below)
+- All-time cumulative KPI grid (overall + one card per account, dynamic)
+- Current Recommendations (from `index['recommendations']` – see below)
 - 4-week rolling calendar (clickable cells → daily reports; week totals → weekly reports)
-- Recent Sessions table (last 10 days with live trades)
+- Recent Sessions table (last 10 days with trade data)
 
 ---
 
@@ -238,11 +223,15 @@ MONARCH.exe --date 2026-05-22      Force-regenerate a specific date
 MONARCH.exe --weekly               Force-regenerate this week's summary
 MONARCH.exe --nt8-path "D:\NT8"   Override NT8 folder location
 MONARCH.exe --dry-run              Preview actions, write nothing
-MONARCH.exe --version              Print version
+MONARCH.exe -d / --daemon          Daemon mode: no pause at exit (Task Scheduler)
+MONARCH.exe --version              Print version, author, website, and email
 ```
 
 `--dry-run` skips log sync and all file writes but still parses trades and
 prints what it would have generated. Safe to run at any time.
+
+`-d` / `--daemon` is intended for Task Scheduler. Without it, manual runs pause
+for 60 seconds at exit (with countdown) so the user can read the output.
 
 ---
 
@@ -280,10 +269,10 @@ Raises `FileNotFoundError` with a helpful message if none of the above succeed.
 | `long_*` / `short_*` | Trades / wins / P&L split by direction  |
 
 Additional breakdown functions:
-- `grade_stats(trades)` — dict keyed by grade string (G3, G4, G5)
-- `ko_stats(trades)` — tuple `(with_ko_stats, without_ko_stats)`
-- `combo_stats(trades)` — list sorted by frequency, each item includes all stats keys plus `combo`
-- `account_stats(trades)` — dict keyed by full APEX account string
+- `grade_stats(trades)` – dict keyed by grade string (G3, G4, G5)
+- `ko_stats(trades)` – tuple `(with_ko_stats, without_ko_stats)`
+- `combo_stats(trades)` – list sorted by frequency, each item includes all stats keys plus `combo`
+- `account_stats(trades)` – dict keyed by full APEX account string
 
 ---
 
@@ -305,6 +294,25 @@ silently skips it if absent.
 
 ---
 
+## Exe Version Info (`make_version_file.py`)
+
+Run once before building, or let `build.ps1` call it automatically.
+
+```powershell
+python make_version_file.py    # writes version_info.txt
+```
+
+Reads `VERSION`, `AUTHOR`, `EMAIL`, `WEBSITE` from `src/config.py` and writes
+`version_info.txt` in PyInstaller's `VSVersionInfo` format. This file is passed
+to PyInstaller via `--version-file` and embeds metadata into the exe's
+**Properties → Details** tab in Windows Explorer.
+
+`version_info.txt` is in `.gitignore` – it is regenerated on every build from
+the constants in `config.py`. To bump the version, change `VERSION` in
+`config.py` only.
+
+---
+
 ## Running from Source
 
 ```powershell
@@ -322,15 +330,20 @@ to `sys.path` automatically and detects frozen vs. source execution via
 
 ## Windows Task Scheduler
 
-Recommended: Mon–Fri at 5:00 PM.
+Recommended: Mon–Fri at 5:00 PM. Use `--daemon` (`-d`) so the window doesn't
+linger after the scheduled run completes.
 
 ```
-Action  : Start a program
-Program : C:\Users\<user>\Documents\NinjaTrader 8\MONARCH\MONARCH.exe
+Action    : Start a program
+Program   : C:\Users\<user>\Documents\NinjaTrader 8\MONARCH\MONARCH.exe
+Arguments : -d
 ```
 
 Friday 5 PM automatically generates both the daily and the weekly summary.
 Saturday/Sunday runs are safe (map to Friday, no blank reports created).
+
+Manual runs (no `-d`) pause for 60 seconds after completion so the output
+stays visible. Press Enter at any time to dismiss early.
 
 ---
 
@@ -355,4 +368,6 @@ the `Remove-Item` line above clears it.
 
 | Version | Notes |
 |---------|-------|
-| 1.0.0   | Initial release — modular rewrite of generate_report.py. Standalone exe, auto log sync, backfill, Sat/Sun guardrail, CastleBravo hub, MONARCH branding, icon support. |
+| 1.0.2   | Symbol Breakdown section on daily, weekly, and Castle Bravo — stats grouped by base ticker (MNQ, NQ, ES, etc.). Instrument label derived from log data; no contract-roll maintenance. |
+| 1.0.1   | Any GodZilla_* file supported; account derived from filename; all accounts (APEX + Sim) included in reports; per-account KPI breakdown in daily, weekly, and hub; daemon mode (`-d`); 60s countdown pause on manual runs; `--version` shows author/web/email; exe Properties metadata via `make_version_file.py`. |
+| 1.0.0   | Initial release – modular rewrite of generate_report.py. Standalone exe, auto log sync, backfill, Sat/Sun guardrail, CastleBravo hub, MONARCH branding, icon support. |

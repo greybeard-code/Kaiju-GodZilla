@@ -26,7 +26,7 @@ from pathlib import Path
 
 # ── ensure src/ is on the path when running from source ──────────────────────
 if getattr(sys, 'frozen', False):
-    # Running as compiled exe — PyInstaller sets sys._MEIPASS
+    # Running as compiled exe – PyInstaller sets sys._MEIPASS
     _src = Path(sys.executable).parent
 else:
     _src = Path(__file__).parent
@@ -34,7 +34,7 @@ else:
 if str(_src) not in sys.path:
     sys.path.insert(0, str(_src))
 
-from config import APP_NAME, VERSION, find_nt8_folder, init_monarch_dirs
+from config import APP_NAME, VERSION, AUTHOR, EMAIL, WEBSITE, find_nt8_folder, init_monarch_dirs
 from log_sync import sync_logs
 from log_parser import (
     parse_all_trades, group_by_session,
@@ -63,6 +63,7 @@ def parse_args():
   MONARCH.exe --date 2026-05-22    # regenerate a specific date
   MONARCH.exe --backfill           # fill all missing reports
   MONARCH.exe --nt8-path "D:\\NT8" # custom NT8 location
+  MONARCH.exe -d                   # daemon mode (no pause at exit)
 """)
     p.add_argument('--date',     metavar='YYYY-MM-DD',
                    help='Force-generate report for this date (daily + weekly if Friday)')
@@ -74,7 +75,10 @@ def parse_args():
                    help='Path to NinjaTrader 8 Documents folder')
     p.add_argument('--dry-run',  action='store_true',
                    help='Show what would be generated without writing files')
-    p.add_argument('--version',  action='version', version=f'%(prog)s {VERSION}')
+    p.add_argument('-d', '--daemon', action='store_true',
+                   help='Daemon mode: no pause at exit (use for Task Scheduler)')
+    p.add_argument('--version',  action='store_true',
+                   help='Show version, author, and contact info then exit')
     return p.parse_args()
 
 
@@ -82,6 +86,13 @@ def parse_args():
 
 def main():
     args = parse_args()
+
+    if args.version:
+        print(f"\n  {APP_NAME}  v{VERSION}")
+        print(f"  Author  :  {AUTHOR}")
+        print(f"  Web     :  {WEBSITE}")
+        print(f"  Email   :  {EMAIL}\n")
+        sys.exit(0)
 
     print(f"\n{'='*60}")
     print(f"  {APP_NAME}  v{VERSION}")
@@ -100,22 +111,22 @@ def main():
     print(f"  MONARCH    : {monarch_dir}")
 
     # ── 3. Sync log files ──────────────────────────────────────────────────────
-    print("\n[SYNC] Copying GodZilla log files...")
+    print("\n[SYNC] Moving GodZilla log files...")
     if not args.dry_run:
-        copied, skipped = sync_logs(nt8, logs_dir)
-        print(f"  Copied: {copied}  |  Already current: {skipped}")
+        moved, failed = sync_logs(nt8, logs_dir)
+        print(f"  Moved: {moved}" + (f"  |  Failed: {failed}" if failed else ""))
     else:
-        print("  (dry-run — skipped)")
+        print("  (dry-run – skipped)")
 
     # ── 4. Parse all trades ────────────────────────────────────────────────────
     print("\n[PARSE] Reading log files...")
-    all_trades  = parse_all_trades(logs_dir)
-    live_trades = [t for t in all_trades if t['is_live']]
-    print(f"  Total: {len(all_trades)} trades  |  Live: {len(live_trades)}  |  Sim: {len(all_trades)-len(live_trades)}")
+    all_trades = parse_all_trades(logs_dir)
+    accounts   = sorted({t['account'] for t in all_trades})
+    print(f"  Total: {len(all_trades)} trades  |  Accounts: {len(accounts)}")
 
     if not all_trades:
         print("\n  No trade data found. Nothing to generate.")
-        _pause_if_double_clicked()
+        _end_of_run(args.daemon)
         return
 
     # ── 5. Load index and update cumulative stats ──────────────────────────────
@@ -137,25 +148,30 @@ def main():
     print(f"\n[DATE]  Report date : {target_date}  |  Week ending : {current_friday}")
 
     # ── 7. Decide which reports to generate ───────────────────────────────────
-    trading_days  = get_trading_days_with_data(all_trades)
-    all_weeks     = get_weeks_with_data(trading_days)
+    trading_days = get_trading_days_with_data(all_trades)
+    all_weeks    = get_weeks_with_data(trading_days)
 
-    daily_to_generate  = []
-    weekly_to_generate = []
+    # Always fill in every missing daily and weekly — this is the default behaviour.
+    # Any date that has log data but no HTML report gets generated automatically.
+    daily_to_generate  = get_missing_daily_dates(reports_dir, trading_days)
+    weekly_to_generate = get_missing_weekly_dates(reports_dir, all_weeks)
 
+    if daily_to_generate or weekly_to_generate:
+        print(f"\n[FILL]  Missing daily reports  : {len(daily_to_generate)}")
+        print(f"[FILL]  Missing weekly reports : {len(weekly_to_generate)}")
+
+    # --backfill: force-regenerate ALL reports, not just missing ones
     if args.backfill:
-        # All missing dailies
-        daily_to_generate = get_missing_daily_dates(reports_dir, trading_days)
-        # All missing weeklies
-        weekly_to_generate = get_missing_weekly_dates(reports_dir, all_weeks)
-        print(f"\n[BACKFILL] Missing daily reports  : {len(daily_to_generate)}")
-        print(f"[BACKFILL] Missing weekly reports : {len(weekly_to_generate)}")
+        daily_to_generate  = list(trading_days)
+        weekly_to_generate = list(all_weeks)
+        print(f"\n[BACKFILL] Regenerating all {len(daily_to_generate)} daily"
+              f" and {len(weekly_to_generate)} weekly reports")
 
     # Always regenerate today's daily (catches intraday updates)
     if target_date not in daily_to_generate:
         daily_to_generate.append(target_date)
 
-    # Weekly: generate if it's Friday, or forced, or backfill already covers it
+    # Weekly: generate for this week's Friday if it's Friday, or if forced
     if args.weekly and current_friday not in weekly_to_generate:
         weekly_to_generate.append(current_friday)
     elif is_friday(target_date) and current_friday not in weekly_to_generate:
@@ -170,9 +186,9 @@ def main():
         print(f"\n[DAILY] Generating {len(daily_to_generate)} daily report(s)...")
         for d in daily_to_generate:
             if args.dry_run:
-                has_data = any(t['session'] == d and t['is_live'] for t in all_trades)
+                has_data = any(t['session'] == d for t in all_trades)
                 print(f"  (dry-run) Would generate daily_{d.strftime('%Y%m%d')}.html"
-                      f"  — {'has data' if has_data else 'no trades'}")
+                      f"  – {'has data' if has_data else 'no trades'}")
             else:
                 generate_daily(d, all_trades, index, reports_dir)
 
@@ -194,35 +210,49 @@ def main():
     # ── Done ───────────────────────────────────────────────────────────────────
     print(f"\n{'='*60}")
     if args.dry_run:
-        print("  Dry run complete — no files written.")
+        print("  Dry run complete – no files written.")
     else:
         hub_path = monarch_dir / 'CastleBravo.html'
         print(f"  Done. Open your hub:")
         print(f"  {hub_path}")
     print(f"{'='*60}\n")
 
-    _pause_if_double_clicked()
+    _end_of_run(args.daemon)
 
 
-def _pause_if_double_clicked():
+def _end_of_run(daemon: bool):
     """
-    When the exe is launched by double-clicking rather than from a terminal,
-    the window would vanish immediately. Detect this and pause so the user
-    can read the output.
+    Post-run pause behaviour:
+      daemon=True  – Task Scheduler launch: return immediately, no pause.
+      daemon=False – Manual or double-click launch: 60-second countdown
+                     so the user can read output. Press Enter to exit early.
     """
-    import os
-    # sys.stdin.isatty() is False when piped or no console attached
-    # On Windows, if launched from Explorer the parent process is explorer.exe
-    try:
-        if sys.stdin and sys.stdin.isatty():
-            return   # running in a real terminal — no need to pause
-    except Exception:
-        pass
-    # Pause for double-click launches
-    try:
-        input("\nPress Enter to close...")
-    except Exception:
-        pass
+    if daemon:
+        return
+
+    import threading
+
+    WAIT = 60
+    print(f"\nClosing in {WAIT}s – press Enter to exit now...")
+
+    entered = threading.Event()
+
+    def _wait_for_enter():
+        try:
+            sys.stdin.readline()
+        except Exception:
+            pass
+        entered.set()
+
+    t = threading.Thread(target=_wait_for_enter, daemon=True)
+    t.start()
+
+    for remaining in range(WAIT, 0, -1):
+        if entered.wait(timeout=1):
+            break
+        print(f"\r  {remaining:2d}s ", end='', flush=True)
+
+    print()
 
 
 if __name__ == '__main__':

@@ -1,14 +1,14 @@
 """
-MONARCH Intelligence Report System — Log Sync
+MONARCH Intelligence Report System – Log Sync
 ==============================================
-Finds all GodZilla_*.csv files in the NT8 folder tree and copies
-any new or updated ones into MONARCH/logs/.
+Finds all GodZilla_*.csv files in the NT8 folder tree and moves
+them into MONARCH/logs/, removing the originals from NT8.
 
 Rules:
   - Include:  GodZilla_*.csv  anywhere under the NT8 root
   - Exclude:  GodZuki_*.csv   (strategy state files, not trade logs)
-  - Exclude:  Any file already in MONARCH/logs/ that hasn't changed
-              (size + mtime comparison to avoid unnecessary copies)
+  - Move behaviour: always copy src → dst (overwriting any existing file),
+    then delete src. Copy-first ensures the original survives a partial write.
 """
 
 import shutil
@@ -19,15 +19,14 @@ from typing import List, Tuple
 def find_source_logs(nt8: Path) -> List[Path]:
     """
     Recursively find all GodZilla_*.csv files under the NT8 root,
-    excluding the MONARCH/logs/ destination to prevent self-copies.
+    excluding the MONARCH/logs/ destination to prevent self-moves.
     """
     monarch_logs = nt8 / 'MONARCH' / 'logs'
     found = []
     for f in nt8.rglob('GodZilla_*.csv'):
-        # Skip files already in MONARCH/logs
         try:
             f.relative_to(monarch_logs)
-            continue   # this file IS in the destination, skip it
+            continue   # already in the destination – skip
         except ValueError:
             pass
         if f.is_file():
@@ -35,40 +34,32 @@ def find_source_logs(nt8: Path) -> List[Path]:
     return sorted(found)
 
 
-def _needs_copy(src: Path, dst: Path) -> bool:
-    """Return True if dst doesn't exist or is older/different from src."""
-    if not dst.exists():
-        return True
-    src_stat = src.stat()
-    dst_stat = dst.stat()
-    # Copy if size differs or source is newer (>1s tolerance)
-    if src_stat.st_size != dst_stat.st_size:
-        return True
-    if src_stat.st_mtime > dst_stat.st_mtime + 1.0:
-        return True
-    return False
-
-
 def sync_logs(nt8: Path, logs_dir: Path) -> Tuple[int, int]:
     """
-    Copy new/updated GodZilla CSVs from the NT8 tree into logs_dir.
+    Move GodZilla CSVs from the NT8 tree into logs_dir.
+    Existing files in logs_dir are overwritten. Originals are deleted
+    from NT8 after a successful copy.
 
     Returns:
-        (copied_count, skipped_count)
+        (moved_count, failed_count)
     """
     sources = find_source_logs(nt8)
-    copied  = 0
-    skipped = 0
+    moved  = 0
+    failed = 0
 
     for src in sources:
         dst = logs_dir / src.name
-        if _needs_copy(src, dst):
+        try:
+            shutil.copy2(src, dst)   # copy2 preserves metadata; overwrites dst
+            src.unlink()             # only delete after successful copy
+            moved += 1
+        except Exception as e:
+            print(f"  [warn] Could not move {src.name}: {e}")
+            failed += 1
+            # dst may be partially written – remove it to avoid corrupt data
             try:
-                shutil.copy2(src, dst)   # copy2 preserves metadata
-                copied += 1
-            except Exception as e:
-                print(f"  [warn] Could not copy {src.name}: {e}")
-        else:
-            skipped += 1
+                dst.unlink(missing_ok=True)
+            except Exception:
+                pass
 
-    return copied, skipped
+    return moved, failed

@@ -1,5 +1,5 @@
 """
-MONARCH Intelligence Report System — Configuration
+MONARCH Intelligence Report System – Configuration
 ====================================================
 Path detection, folder initialisation, and shared constants.
 """
@@ -9,23 +9,27 @@ import json
 from pathlib import Path
 
 # ── Branding ──────────────────────────────────────────────────────────────────
-VERSION  = "1.0.0"
+VERSION  = "1.0.2"
 APP_NAME = "MONARCH Intelligence Report System"
 HUB_FILE = "CastleBravo.html"
+AUTHOR   = "GreyBeard"
+EMAIL    = "greybeard@greybeardconsulting.net"
+WEBSITE  = "https://greybeardconsulting.net"
 
 # ── Account constants ─────────────────────────────────────────────────────────
-LIVE_ACCOUNTS = {'APEX750470000084', 'APEX750470000085'}
-ACCT_LABEL    = {'APEX750470000084': '084', 'APEX750470000085': '085'}
-ACCT_GRADE    = {'APEX750470000084': 'G4',  'APEX750470000085': 'G3'}
-SIM_PREFIXES  = ('Sim',)   # account names starting with these are ignored
+# Known account labels and grade thresholds – extended automatically for new accounts.
+ACCT_LABEL = {'APEX750470000084': '084', 'APEX750470000085': '085'}
+ACCT_GRADE = {'APEX750470000084': 'G4',  'APEX750470000085': 'G3'}
 
 
-def is_live(account: str) -> bool:
-    return account in LIVE_ACCOUNTS
+def get_account_label(account: str) -> str:
+    """Short display label: known accounts use the ACCT_LABEL map, others use last 6 chars."""
+    return ACCT_LABEL.get(account, account[-6:] if len(account) >= 6 else account)
 
 
-def is_sim(account: str) -> bool:
-    return any(account.startswith(p) for p in SIM_PREFIXES)
+def get_account_grade(account: str) -> str:
+    """Grade threshold string: known accounts from ACCT_GRADE map, others '?'."""
+    return ACCT_GRADE.get(account, '?')
 
 
 # ── NT8 folder detection ──────────────────────────────────────────────────────
@@ -33,7 +37,7 @@ def is_sim(account: str) -> bool:
 def _windows_documents_path() -> Path | None:
     """
     Ask Windows where the current user's Documents folder actually lives.
-    This is the authoritative source — it reflects OneDrive redirection,
+    This is the authoritative source – it reflects OneDrive redirection,
     folder moves, and any other shell customisation.
     Returns None on non-Windows or if the registry read fails.
     """
@@ -66,7 +70,7 @@ def _candidate_documents_dirs() -> list[Path]:
             seen.add(p)
             candidates.append(p)
 
-    # 1. Registry — the only truly reliable source on Windows
+    # 1. Registry – the only truly reliable source on Windows
     reg_docs = _windows_documents_path()
     if reg_docs:
         add(reg_docs)

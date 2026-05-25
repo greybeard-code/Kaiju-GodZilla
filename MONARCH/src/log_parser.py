@@ -1,5 +1,5 @@
 """
-MONARCH Intelligence Report System — Log Parser
+MONARCH Intelligence Report System – Log Parser
 ================================================
 Parses GodZilla_*.csv trade files into normalised trade dicts and
 computes all statistics used by the report generators.
@@ -17,7 +17,7 @@ from pathlib import Path
 from collections import defaultdict
 from typing import List, Dict, Tuple
 
-from config import LIVE_ACCOUNTS, ACCT_LABEL, ACCT_GRADE
+from config import get_account_label
 from date_utils import trading_day_for
 
 
@@ -59,15 +59,23 @@ def clean_combo(combo: str) -> str:
 
 # ── File scanning & parsing ───────────────────────────────────────────────────
 
+def _account_from_filename(fpath: Path) -> str:
+    """
+    Extract account name from filename: GodZilla_{ACCOUNT}_{...}.csv
+    Returns empty string if the filename doesn't match the pattern.
+    """
+    m = re.match(r'^GodZilla_([^_]+)_', fpath.name)
+    return m.group(1) if m else ''
+
+
 def parse_all_trades(logs_dir: Path) -> List[dict]:
     """
     Parse every GodZilla_*.csv in logs_dir.
     Returns a list of trade dicts sorted by open_dt ascending.
-    Sim accounts (Sim101, Sim102, SimKhahn, etc.) are included in the list
-    but flagged with is_live=False so callers can filter them out.
+    All accounts (APEX, Sim, etc.) are included and treated equally.
     """
     trades: List[dict] = []
-    seen_keys: set = set()  # deduplicate across files with same name
+    seen_keys: set = set()
 
     for fpath in sorted(logs_dir.glob('GodZilla_*.csv')):
         _parse_file(fpath, trades, seen_keys)
@@ -77,19 +85,25 @@ def parse_all_trades(logs_dir: Path) -> List[dict]:
 
 
 def _parse_file(fpath: Path, trades: List[dict], seen_keys: set):
+    filename_account = _account_from_filename(fpath)
     try:
         with open(fpath, encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                if not row.get('OpenTime') or not row.get('Account'):
+                if not row.get('OpenTime'):
                     continue
+
+                # Account: prefer CSV column; fall back to filename-derived value
+                acct = row.get('Account', '').strip().strip('"') or filename_account
+                if not acct:
+                    continue
+
                 try:
                     open_dt  = datetime.strptime(row['OpenTime'].strip(),  '%Y-%m-%d %H:%M:%S')
                     close_dt = datetime.strptime(row['CloseTime'].strip(), '%Y-%m-%d %H:%M:%S')
                 except ValueError:
                     continue
 
-                acct    = row['Account'].strip().strip('"')
                 trigger = row.get('Trigger', '').strip()
                 used    = row.get('UsedSignals', '').strip()
                 combo   = row.get('SignalCombo', '').strip()
@@ -106,27 +120,27 @@ def _parse_file(fpath: Path, trades: List[dict], seen_keys: set):
                     pnl = 0.0
 
                 trades.append({
-                    'open_dt':    open_dt,
-                    'close_dt':   close_dt,
-                    'session':    trading_day_for(open_dt),
-                    'account':    acct,
-                    'instrument': row.get('Instrument', '').strip(),
-                    'open_price': _safe_float(row.get('OpenPrice')),
-                    'qty':        _safe_int(row.get('Qty')),
-                    'direction':  row.get('Direction', '').strip(),
-                    'atm':        row.get('AtmStrategyName', '').strip(),
-                    'pnl':        pnl,
-                    'result':     row.get('TradeResult', '').strip().upper(),
-                    'trigger':    trigger,
-                    'used':       used,
-                    'combo':      combo,
+                    'open_dt':     open_dt,
+                    'close_dt':    close_dt,
+                    'session':     trading_day_for(open_dt),
+                    'account':     acct,
+                    'instrument':  row.get('Instrument', '').strip(),
+                    'open_price':  _safe_float(row.get('OpenPrice')),
+                    'qty':         _safe_int(row.get('Qty')),
+                    'direction':   row.get('Direction', '').strip(),
+                    'atm':         row.get('AtmStrategyName', '').strip(),
+                    'pnl':         pnl,
+                    'result':      row.get('TradeResult', '').strip().upper(),
+                    'trigger':     trigger,
+                    'used':        used,
+                    'combo':       combo,
                     'combo_clean': clean_combo(combo),
-                    'grade':      parse_grade(trigger, used),
-                    'has_ko':     has_ko(used),
-                    'duration':   parse_duration(open_dt, close_dt),
-                    'is_fast':    is_fast_trade(open_dt, close_dt),
-                    'is_live':    acct in LIVE_ACCOUNTS,
-                    'source':     fpath.name,
+                    'grade':       parse_grade(trigger, used),
+                    'has_ko':      has_ko(used),
+                    'duration':    parse_duration(open_dt, close_dt),
+                    'is_fast':     is_fast_trade(open_dt, close_dt),
+                    'is_live':     True,   # all accounts in GodZilla logs are active
+                    'source':      fpath.name,
                 })
     except Exception as e:
         print(f"  [warn] Could not parse {fpath.name}: {e}")
@@ -243,6 +257,22 @@ def account_stats(trades: List[dict]) -> Dict[str, dict]:
     return {a: compute_stats(ts) for a, ts in by_acct.items()}
 
 
+def instrument_label(trades: List[dict]) -> str:
+    """Return a display string of unique instruments found in trades (e.g. 'MNQ 06-26' or 'MNQ 06-26 · ES 06-26')."""
+    instruments = sorted({t['instrument'] for t in trades if t.get('instrument')})
+    return ' · '.join(instruments) if instruments else ''
+
+
+def ticker_stats(trades: List[dict]) -> Dict[str, dict]:
+    """Group trades by base ticker symbol (contract date stripped) and compute stats per symbol."""
+    by_ticker: Dict[str, list] = defaultdict(list)
+    for t in trades:
+        instr  = t.get('instrument', '')
+        ticker = instr.split()[0] if instr else 'Unknown'
+        by_ticker[ticker].append(t)
+    return {ticker: compute_stats(ts) for ticker, ts in sorted(by_ticker.items())}
+
+
 # ── Index management ──────────────────────────────────────────────────────────
 
 import json
@@ -271,41 +301,41 @@ def save_index(index: dict, reports_dir: Path):
 
 
 def update_cumulative(index: dict, all_trades: List[dict]):
-    """Recompute all-time cumulative stats from live trades and write into index."""
-    live    = [t for t in all_trades if t['is_live']]
-    stats   = compute_stats(live)
-    by_acct = account_stats(live)
-    s084    = by_acct.get('APEX750470000084', compute_stats([]))
-    s085    = by_acct.get('APEX750470000085', compute_stats([]))
+    """Recompute all-time cumulative stats and write into index."""
+    stats   = compute_stats(all_trades)
+    by_acct = account_stats(all_trades)
+
+    per_account = {
+        acct: {'pnl': s['pnl'], 'trades': s['trades'],
+               'wins': s['wins'], 'losses': s['losses'],
+               'win_rate': s['win_rate']}
+        for acct, s in by_acct.items()
+    }
 
     index['cumulative'] = {
-        'pnl':            stats['pnl'],
-        'trades':         stats['trades'],
-        'wins':           stats['wins'],
-        'losses':         stats['losses'],
-        'win_rate':       stats['win_rate'],
-        'profit_factor':  stats['profit_factor'],
-        'avg_win':        stats['avg_win'],
-        'avg_loss':       stats['avg_loss'],
-        'rr':             stats['rr'],
-        'pnl_084':        s084['pnl'],
-        'trades_084':     s084['trades'],
-        'pnl_085':        s085['pnl'],
-        'trades_085':     s085['trades'],
-        'last_updated':   date.today().isoformat(),
+        'pnl':           stats['pnl'],
+        'trades':        stats['trades'],
+        'wins':          stats['wins'],
+        'losses':        stats['losses'],
+        'win_rate':      stats['win_rate'],
+        'profit_factor': stats['profit_factor'],
+        'avg_win':       stats['avg_win'],
+        'avg_loss':      stats['avg_loss'],
+        'rr':            stats['rr'],
+        'per_account':   per_account,
+        'last_updated':  date.today().isoformat(),
     }
 
 
 def register_daily(index: dict, session_date: date, day_trades: List[dict]):
-    live  = [t for t in day_trades if t['is_live']]
-    stats = compute_stats(live)
+    stats = compute_stats(day_trades)
     index['reports']['daily'][session_date.isoformat()] = {
         'file':     f"daily_{session_date.strftime('%Y%m%d')}.html",
         'pnl':      stats['pnl'],
         'trades':   stats['trades'],
         'wins':     stats['wins'],
         'losses':   stats['losses'],
-        'accounts': sorted({ACCT_LABEL.get(t['account'], t['account']) for t in live}),
+        'accounts': sorted({get_account_label(t['account']) for t in day_trades}),
     }
 
 

@@ -1,5 +1,5 @@
 """
-MONARCH Intelligence Report System — Shared Templates & HTML Helpers
+MONARCH Intelligence Report System – Shared Templates & HTML Helpers
 =====================================================================
 CSS theme, page wrapper, and reusable component functions used by
 daily_report.py, weekly_report.py, and hub.py.

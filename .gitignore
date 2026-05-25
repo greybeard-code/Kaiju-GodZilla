@@ -19,6 +19,7 @@ env/
 MONARCH/dist/
 MONARCH/build/
 MONARCH/*.spec
+MONARCH/version_info.txt
 
 # ── OS / editor ───────────────────────────────────────────────────────────────
 .DS_Store

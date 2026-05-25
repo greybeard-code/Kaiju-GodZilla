@@ -1,5 +1,5 @@
 """
-MONARCH Intelligence Report System — Daily Report Generator
+MONARCH Intelligence Report System – Daily Report Generator
 ============================================================
 Builds MONARCH_Daily_YYYY-MM-DD.html for a single trading session.
 """
@@ -8,10 +8,10 @@ from datetime import date
 from pathlib import Path
 from typing import List
 
-from config import LIVE_ACCOUNTS, ACCT_LABEL, ACCT_GRADE
+from config import get_account_label, get_account_grade, VERSION, WEBSITE
 from log_parser import (
     compute_stats, grade_stats, ko_stats, combo_stats, account_stats,
-    register_daily,
+    instrument_label, ticker_stats, register_daily,
 )
 from date_utils import fmt_weekday_full, fmt_month_day
 from templates import (
@@ -26,20 +26,21 @@ HUB_REL = '../CastleBravo.html'
 
 def build_daily_html(session_date: date, trades: List[dict], index: dict) -> str:
     """Generate the full HTML string for one daily report."""
-    live   = [t for t in trades if t['is_live']]
-    stats  = compute_stats(live)
-    by_acct= account_stats(live)
-    gstats = grade_stats(live)
-    with_ko, without_ko = ko_stats(live)
-    combos = combo_stats(live)
-    cumul  = index.get('cumulative', {})
+    stats    = compute_stats(trades)
+    by_acct  = account_stats(trades)
+    by_tkr   = ticker_stats(trades)
+    gstats   = grade_stats(trades)
+    with_ko, without_ko = ko_stats(trades)
+    combos   = combo_stats(trades)
+    cumul    = index.get('cumulative', {})
+    instr    = instrument_label(trades)
 
     day_name    = fmt_weekday_full(session_date)
-    accts_active= sorted({ACCT_LABEL.get(t['account'], t['account']) for t in live})
-    acct_str    = " + ".join(accts_active) if accts_active else "No live accounts"
+    accts_active = sorted({get_account_label(t['account']) for t in trades})
+    acct_str    = " + ".join(accts_active) if accts_active else "No accounts"
 
     # ── Badge ──────────────────────────────────────────────────────────────────
-    if not live:
+    if not trades:
         badge = '<span class="badge badge-none">No Trades</span>'
     elif stats['pnl'] >= 0:
         badge = f'<span class="badge badge-pos">{pnl_fmt(stats["pnl"])} Day</span>'
@@ -50,13 +51,13 @@ def build_daily_html(session_date: date, trades: List[dict], index: dict) -> str
     header = f"""<div class="header">
   <div>
     <h1><span class="monarch-badge">MONARCH</span>Daily Report {badge}</h1>
-    <div class="meta">{day_name} &nbsp;·&nbsp; {acct_str} &nbsp;·&nbsp; MNQ 06-26</div>
+    <div class="meta">{day_name}</div>
   </div>
   <div class="nav"><a href="{HUB_REL}">← Castle Bravo</a></div>
 </div>"""
 
     # ── KPI Grid ───────────────────────────────────────────────────────────────
-    if live:
+    if trades:
         wr_str = f"{stats['win_rate']*100:.1f}%"
         kpis = f"""<div class="kpi-grid">
   {kpi_card("Net P&L",       pnl_fmt(stats['pnl']),       pnl_class(stats['pnl']),   f"{stats['trades']} trades")}
@@ -70,8 +71,8 @@ def build_daily_html(session_date: date, trades: List[dict], index: dict) -> str
 </div>"""
     else:
         kpis = ('<div class="callout callout-yellow">'
-                '<h3>No live trades recorded for this session</h3>'
-                '<p>Check NT8 log folder — GodZilla CSVs may not have been written yet.</p>'
+                '<h3>No trades recorded for this session</h3>'
+                '<p>Check NT8 log folder – GodZilla CSVs may not have been written yet.</p>'
                 '</div>')
 
     # ── Account Breakdown ──────────────────────────────────────────────────────
@@ -79,11 +80,13 @@ def build_daily_html(session_date: date, trades: List[dict], index: dict) -> str
     if by_acct:
         cards_html = ''
         for acct, s in sorted(by_acct.items()):
-            grade   = ACCT_GRADE.get(acct, '?')
+            label   = get_account_label(acct)
+            grade   = get_account_grade(acct)
             pnl_cls = pnl_class(s['pnl'])
             wr_cls  = 'green' if s['win_rate'] >= 0.7 else 'yellow'
+            grade_line = f' – {grade} Threshold' if grade != '?' else ''
             cards_html += f"""<div class="acct-card">
-  <h3>APEX …{acct[-6:]} — {grade} Threshold</h3>
+  <h3>{acct} – {label}{grade_line}</h3>
   <div class="acct-stat"><span class="k">Trades</span><span>{s['trades']}</span></div>
   <div class="acct-stat"><span class="k">Win Rate</span><span class="{wr_cls}">{s['win_rate']*100:.0f}% ({s['wins']}W/{s['losses']}L)</span></div>
   <div class="acct-stat"><span class="k">Net P&L</span><span class="{pnl_cls}">{pnl_fmt(s['pnl'])}</span></div>
@@ -94,18 +97,37 @@ def build_daily_html(session_date: date, trades: List[dict], index: dict) -> str
         col = 'two-col' if len(by_acct) == 2 else ('three-col' if len(by_acct) >= 3 else '')
         acct_section = f'<div class="section"><h2>Account Breakdown</h2><div class="{col}">{cards_html}</div></div>'
 
+    # ── Symbol Breakdown ───────────────────────────────────────────────────────
+    symbol_section = ''
+    if by_tkr:
+        tkr_cards = ''
+        for tkr, s in by_tkr.items():
+            pnl_cls = pnl_class(s['pnl'])
+            wr_cls  = 'green' if s['win_rate'] >= 0.7 else 'yellow'
+            tkr_cards += f"""<div class="acct-card">
+  <h3>{tkr}</h3>
+  <div class="acct-stat"><span class="k">Trades</span><span>{s['trades']}</span></div>
+  <div class="acct-stat"><span class="k">Win Rate</span><span class="{wr_cls}">{s['win_rate']*100:.0f}% ({s['wins']}W/{s['losses']}L)</span></div>
+  <div class="acct-stat"><span class="k">Net P&L</span><span class="{pnl_cls}">{pnl_fmt(s['pnl'])}</span></div>
+  <div class="acct-stat"><span class="k">Avg Win</span><span class="green">${s['avg_win']:.2f}</span></div>
+  <div class="acct-stat"><span class="k">Avg Loss</span><span class="red">${s['avg_loss']:.2f}</span></div>
+  <div class="acct-stat"><span class="k">Profit Factor</span><span class="{pnl_cls}">{pf_fmt(s['profit_factor'])}</span></div>
+</div>"""
+        col = 'two-col' if len(by_tkr) == 2 else ('three-col' if len(by_tkr) >= 3 else '')
+        symbol_section = f'<div class="section"><h2>Symbol Breakdown</h2><div class="{col}">{tkr_cards}</div></div>'
+
     # ── Trade Log Table ────────────────────────────────────────────────────────
     trade_table = ''
-    if live:
+    if trades:
         rows = ''
-        for i, t in enumerate(sorted(live, key=lambda x: x['open_dt']), 1):
+        for i, t in enumerate(sorted(trades, key=lambda x: x['open_dt']), 1):
             row_cls  = 'win-row' if t['result'] == 'WIN' else 'loss-row'
             fast_str = ' ⚡' if t['is_fast'] else ''
             dir_tag  = f'<span class="tag tag-{"long" if t["direction"]=="Long" else "short"}">{t["direction"]}</span>'
             res_tag  = f'<span class="tag tag-{"win" if t["result"]=="WIN" else "loss"}">{t["result"]}</span>'
-            ko_tag   = '<span class="tag tag-ko">KO</span>' if t['has_ko'] else '<span class="muted">—</span>'
+            ko_tag   = '<span class="tag tag-ko">KO</span>' if t['has_ko'] else '<span class="muted">–</span>'
             pnl_col  = f'<span class="{pnl_class(t["pnl"])}">{pnl_fmt(t["pnl"])}</span>'
-            acct_lbl = ACCT_LABEL.get(t['account'], t['account'])
+            acct_lbl = get_account_label(t['account'])
             rows += f"""<tr class="{row_cls}">
   <td>{i}</td>
   <td>{t['open_dt'].strftime('%H:%M')}</td>
@@ -119,7 +141,7 @@ def build_daily_html(session_date: date, trades: List[dict], index: dict) -> str
   <td>{res_tag}</td>
   <td>{pnl_col}</td>
 </tr>"""
-        trade_table = f"""<div class="section"><h2>Live Trade Log — {len(live)} Trade{'s' if len(live)!=1 else ''}</h2>
+        trade_table = f"""<div class="section"><h2>Trade Log – {len(trades)} Trade{'s' if len(trades)!=1 else ''}</h2>
 <table><thead><tr>
   <th>#</th><th>Time</th><th>Date</th><th>Acct</th><th>Dir</th>
   <th>Duration</th><th>Grade</th><th>KO</th><th>Signals</th><th>Result</th><th>P&L</th>
@@ -129,7 +151,7 @@ def build_daily_html(session_date: date, trades: List[dict], index: dict) -> str
 
     # ── Breakdowns ─────────────────────────────────────────────────────────────
     breakdowns = ''
-    if live:
+    if trades:
         dir_card = f"""<div class="card"><h3>Direction</h3>
   {bar_stat_row('Long',  stats['long_wins'],  stats['long_trades'],  stats['long_pnl'])}
   {bar_stat_row('Short', stats['short_wins'], stats['short_trades'], stats['short_pnl'])}
@@ -147,7 +169,7 @@ def build_daily_html(session_date: date, trades: List[dict], index: dict) -> str
 
     # ── Signal Combo Analysis ──────────────────────────────────────────────────
     combo_section = ''
-    if live:
+    if trades:
         combo_rows = ''
         for c in combos[:10]:
             row_cls = 'win-row' if c['pnl'] >= 0 else 'loss-row'
@@ -179,11 +201,15 @@ def build_daily_html(session_date: date, trades: List[dict], index: dict) -> str
 </div></div>"""
 
     # ── Footer ─────────────────────────────────────────────────────────────────
-    footer = (f'<div class="footer">Generated {now_stamp()} · MONARCH Intelligence Report System · '
-              f'MNQ 06-26 · <a href="{HUB_REL}" style="color:var(--accent)">← Castle Bravo</a></div>')
+    year       = session_date.year
+    instr_part = f' · {instr}' if instr else ''
+    footer = (f'<div class="footer">Generated {now_stamp()} · MONARCH Intelligence Report System v{VERSION}{instr_part}'
+              f' · <a href="{HUB_REL}" style="color:var(--accent)">← Castle Bravo</a>'
+              f'<br>Copyright &copy; {year} GreyBeard Consulting &nbsp;·&nbsp; '
+              f'<a href="{WEBSITE}" style="color:var(--accent)">{WEBSITE}</a></div>')
 
-    body = '\n'.join([header, kpis, acct_section, trade_table, breakdowns, combo_section, cumul_section, footer])
-    return page_wrap(f"MONARCH Daily — {session_date.strftime('%Y-%m-%d')}", body)
+    body = '\n'.join([header, kpis, acct_section, symbol_section, trade_table, breakdowns, combo_section, cumul_section, footer])
+    return page_wrap(f"MONARCH Daily – {session_date.strftime('%Y-%m-%d')}", body)
 
 
 def generate_daily(session_date: date, all_trades: List[dict],
@@ -192,9 +218,8 @@ def generate_daily(session_date: date, all_trades: List[dict],
     from log_parser import group_by_session
     by_day     = group_by_session(all_trades)
     day_trades = by_day.get(session_date, [])
-    live_count = sum(1 for t in day_trades if t['is_live'])
 
-    print(f"  Daily {session_date}: {live_count} live trades")
+    print(f"  Daily {session_date}: {len(day_trades)} trades")
 
     html  = build_daily_html(session_date, day_trades, index)
     fname = f"daily_{session_date.strftime('%Y%m%d')}.html"

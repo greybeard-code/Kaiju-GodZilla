@@ -9,7 +9,7 @@ A NinjaTrader 8 trading system built around six specialized signal indicators un
 ## Components
 
 ### GodZillaKilla — ATM Trading Strategy
-*Current version: 1.6.6*
+*Current version: 1.7.1*
 
 Automated NinjaTrader 8 strategy that reads signals from all six GodZilla Suite sub-indicators and executes ATM or Fixed-Ticks trades based on configurable confluence rules. Includes session filters, EMA filter, news filter, daily PnL limits, martingale recovery, and a full SharpDX dashboard.
 
@@ -17,8 +17,17 @@ Automated NinjaTrader 8 strategy that reads signals from all six GodZilla Suite 
 
 ---
 
+### MONARCH — Intelligence Report System
+*Current version: 1.0.2*
+
+Standalone Windows executable that turns GodZilla trade logs into browser-based HTML reports — no Python required. MONARCH reads `GodZilla_*.csv` files directly from your NinjaTrader 8 folder, generates a daily performance report for every session, a weekly summary every Friday, and a **Castle Bravo** hub page with a 4-week calendar and all-time cumulative stats. Supports multiple accounts (live, prop firm, and Sim) side by side. Runs automatically via Windows Task Scheduler.
+
+→ [MONARCH/MONARCH.md](MONARCH/MONARCH.md)
+
+---
+
 ### GodZuki — Signal Indicator
-*Current version: 1.0.3*
+*Current version: 1.1*
 
 Pure signal indicator version of GodZillaKilla. No trading — add GodZuki to any chart to visualize the same confluence signals, trigger audio alerts, log signal history to CSV, and expose all signal values in the NT8 Data Box. Signal Set 1 and Set 2 draw independently on the same bar. Useful for monitoring, backtesting signal quality, and driving custom strategies via public `Series<double>` outputs.
 
@@ -46,18 +55,20 @@ All six expose a `Signal_Trade` series using a consistent **−1 / 0 / +1** (or 
 
 ## Quick Start
 
-1. Compile the six sub-indicators first — they must be present in the `GreyBeard` namespace before GodZillaKilla or GodZuki will compile.
+1. Import the `GodZilla_Family.zip` file into NinjaTrader 8 — this compiles all six sub-indicators, GodZuki, and GodZillaKilla together.
 2. Add **GodZuki** to a chart to verify signal output before enabling live trading.
-3. Add **GodZillaKilla** to the same chart and configure your ATM template, signal set, and session times.
+3. Add **GodZillaKilla** to a separate chart and configure your ATM template, signal set, and session times.
 
 ---
 
 ## File Index
 
+### NinjaScript (NT8)
+
 | File | Purpose |
 |---|---|
-| `GodZillaKilla.cs` | ATM trading strategy (v1.6.6) |
-| `GodZuki.cs` | Signal visualization indicator (v1.0.3) |
+| `GodZillaKilla.cs` | ATM trading strategy (v1.7.1) |
+| `GodZuki.cs` | Signal visualization indicator (v1.1) |
 | `gbKingOrderBlock.cs` | KO sub-indicator |
 | `gbPANAKanal.cs` | PA sub-indicator |
 | `gbThunderZilla.cs` | TH sub-indicator |
@@ -66,3 +77,20 @@ All six expose a `Signal_Trade` series using a consistent **−1 / 0 / +1** (or 
 | `gbNobleCloud.cs` | NC sub-indicator |
 | `gbBarStatus.cs` | Bar status utility indicator |
 | `NewsSignals.cs` | Economic calendar signal source |
+
+### MONARCH (Python / Windows exe)
+
+| File | Purpose |
+|---|---|
+| `MONARCH/src/monarch.py` | Entry point — CLI, orchestrator |
+| `MONARCH/src/config.py` | NT8 path detection, account helpers, version constants |
+| `MONARCH/src/log_sync.py` | Move `GodZilla_*.csv` files from NT8 tree to `logs/` |
+| `MONARCH/src/log_parser.py` | Parse CSVs, compute statistics, manage index |
+| `MONARCH/src/date_utils.py` | Trading-day math, week helpers, missing-report detection |
+| `MONARCH/src/daily_report.py` | Generate one day's HTML report |
+| `MONARCH/src/weekly_report.py` | Generate Mon–Fri weekly summary HTML |
+| `MONARCH/src/hub.py` | Generate Castle Bravo hub page |
+| `MONARCH/src/templates.py` | Shared dark-theme CSS and HTML component helpers |
+| `MONARCH/build.ps1` | PowerShell build script — compiles exe and deploys |
+| `MONARCH/make_icon.py` | One-time icon generator (writes `monarch.ico`) |
+| `MONARCH/make_version_file.py` | Generates `version_info.txt` for exe Properties metadata |

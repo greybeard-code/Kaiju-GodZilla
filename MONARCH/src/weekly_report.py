@@ -1,5 +1,5 @@
 """
-MONARCH Intelligence Report System — Weekly Report Generator
+MONARCH Intelligence Report System – Weekly Report Generator
 =============================================================
 Builds MONARCH_Weekly for the Mon–Fri window ending on a given Friday.
 File name: weekly_YYYYMMDD.html  (date = Friday of that week)
@@ -9,10 +9,10 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import List
 
-from config import ACCT_LABEL
+from config import get_account_label, get_account_grade, VERSION, WEBSITE
 from log_parser import (
     compute_stats, grade_stats, combo_stats, account_stats,
-    group_by_session, register_weekly,
+    instrument_label, ticker_stats, group_by_session, register_weekly,
 )
 from date_utils import week_dates, fmt_month_day, fmt_weekday_month_day
 from templates import (
@@ -30,21 +30,24 @@ def build_weekly_html(friday: date, all_trades: List[dict],
     monday    = days[0]
     by_day    = group_by_session(all_trades)
 
-    # All live trades in this Mon–Fri window
+    # All trades in this Mon–Fri window
     week_trades = []
     for d in days:
-        week_trades.extend(t for t in by_day.get(d, []) if t['is_live'])
+        week_trades.extend(by_day.get(d, []))
 
     stats   = compute_stats(week_trades)
+    by_acct = account_stats(week_trades)
+    by_tkr  = ticker_stats(week_trades)
     gstats  = grade_stats(week_trades)
     combos  = combo_stats(week_trades)
+    instr   = instrument_label(week_trades)
 
     date_range = f"{fmt_month_day(monday)} – {fmt_month_day(friday)}, {friday.year}"
 
     # ── Badge ──────────────────────────────────────────────────────────────────
     if not week_trades:
         badge = '<span class="badge badge-none">No Trades</span>'
-    elif stats['pnl'] >= 0:
+    elif stats['pnl'] >= 0:  # noqa: E501
         badge = f'<span class="badge badge-pos">{pnl_fmt(stats["pnl"])} Week</span>'
     else:
         badge = f'<span class="badge badge-neg">{pnl_fmt(stats["pnl"])} Week</span>'
@@ -53,7 +56,7 @@ def build_weekly_html(friday: date, all_trades: List[dict],
     header = f"""<div class="header">
   <div>
     <h1><span class="monarch-badge">MONARCH</span>Weekly Summary {badge}</h1>
-    <div class="meta">Week of {date_range} &nbsp;·&nbsp; MNQ 06-26</div>
+    <div class="meta">Week of {date_range}</div>
   </div>
   <div class="nav"><a href="{HUB_REL}">← Castle Bravo</a></div>
 </div>"""
@@ -72,14 +75,14 @@ def build_weekly_html(friday: date, all_trades: List[dict],
 </div>"""
     else:
         kpis = ('<div class="callout callout-yellow">'
-                '<h3>No live trades this week</h3>'
-                '<p>NT8 logs found no APEX account activity for this period.</p>'
+                '<h3>No trades this week</h3>'
+                '<p>NT8 logs found no activity for this period.</p>'
                 '</div>')
 
     # ── Session Breakdown table ────────────────────────────────────────────────
     day_rows = ''
     for d in days:
-        day_trades = [t for t in by_day.get(d, []) if t['is_live']]
+        day_trades = by_day.get(d, [])
         s     = compute_stats(day_trades)
         dname = fmt_weekday_month_day(d)
         fname = f"daily_{d.strftime('%Y%m%d')}.html"
@@ -88,12 +91,12 @@ def build_weekly_html(friday: date, all_trades: List[dict],
         if not day_trades:
             day_rows += (f'<tr class="flat-row">'
                          f'<td>{"<a href=" + repr(fname) + ">" if has_report else ""}{dname}{"</a>" if has_report else ""}</td>'
-                         f'<td class="muted">—</td><td class="muted">—</td>'
-                         f'<td class="muted">—</td><td class="muted">—</td>'
+                         f'<td class="muted">–</td><td class="muted">–</td>'
+                         f'<td class="muted">–</td><td class="muted">–</td>'
                          f'<td class="muted">No trades</td></tr>')
         else:
             pnl_cls = pnl_class(s['pnl'])
-            accts   = ', '.join(sorted({ACCT_LABEL.get(t['account'], '?') for t in day_trades}))
+            accts   = ', '.join(sorted({get_account_label(t['account']) for t in day_trades}))
             link_o  = f'<a href="{fname}" style="color:var(--accent)">' if has_report else ''
             link_c  = '</a>' if has_report else ''
             row_cls = 'win-row' if s['pnl'] >= 0 else 'loss-row'
@@ -121,7 +124,7 @@ def build_weekly_html(friday: date, all_trades: List[dict],
                 d_str   = fmt_weekday_month_day(t['open_dt'].date()) + ' ' + t['open_dt'].strftime('%H:%M')
                 pnl_cls = pnl_class(t['pnl'])
                 dir_cls = 'long' if t['direction'] == 'Long' else 'short'
-                acct_s  = ACCT_LABEL.get(t['account'], '?')
+                acct_s  = get_account_label(t['account'])
                 rows += (f'<tr>'
                          f'<td style="font-size:11px">{d_str}</td>'
                          f'<td>{acct_s}</td>'
@@ -155,12 +158,57 @@ def build_weekly_html(friday: date, all_trades: List[dict],
   {bar_stat_row('Short', stats['short_wins'], stats['short_trades'], stats['short_pnl'])}
 </div></div></div>"""
 
-    # ── Footer ─────────────────────────────────────────────────────────────────
-    footer = (f'<div class="footer">Generated {now_stamp()} · MONARCH Intelligence Report System · '
-              f'<a href="{HUB_REL}" style="color:var(--accent)">← Castle Bravo</a></div>')
+    # ── Account Breakdown ──────────────────────────────────────────────────────
+    acct_section = ''
+    if by_acct:
+        cards_html = ''
+        for acct, s in sorted(by_acct.items()):
+            label   = get_account_label(acct)
+            grade   = get_account_grade(acct)
+            pnl_cls = pnl_class(s['pnl'])
+            wr_cls  = 'green' if s['win_rate'] >= 0.7 else 'yellow'
+            grade_line = f' – {grade} Threshold' if grade != '?' else ''
+            cards_html += f"""<div class="acct-card">
+  <h3>{acct} – {label}{grade_line}</h3>
+  <div class="acct-stat"><span class="k">Trades</span><span>{s['trades']}</span></div>
+  <div class="acct-stat"><span class="k">Win Rate</span><span class="{wr_cls}">{s['win_rate']*100:.0f}% ({s['wins']}W/{s['losses']}L)</span></div>
+  <div class="acct-stat"><span class="k">Net P&L</span><span class="{pnl_cls}">{pnl_fmt(s['pnl'])}</span></div>
+  <div class="acct-stat"><span class="k">Avg Win</span><span class="green">${s['avg_win']:.2f}</span></div>
+  <div class="acct-stat"><span class="k">Avg Loss</span><span class="red">${s['avg_loss']:.2f}</span></div>
+  <div class="acct-stat"><span class="k">Profit Factor</span><span class="{pnl_cls}">{pf_fmt(s['profit_factor'])}</span></div>
+</div>"""
+        col = 'two-col' if len(by_acct) == 2 else ('three-col' if len(by_acct) >= 3 else '')
+        acct_section = f'<div class="section"><h2>Account Breakdown</h2><div class="{col}">{cards_html}</div></div>'
 
-    body = '\n'.join([header, kpis, day_table, winners_section, breakdowns, footer])
-    return page_wrap(f"MONARCH Weekly — {friday.strftime('%Y-%m-%d')}", body)
+    # ── Symbol Breakdown ───────────────────────────────────────────────────────
+    symbol_section = ''
+    if by_tkr:
+        tkr_cards = ''
+        for tkr, s in by_tkr.items():
+            pnl_cls = pnl_class(s['pnl'])
+            wr_cls  = 'green' if s['win_rate'] >= 0.7 else 'yellow'
+            tkr_cards += f"""<div class="acct-card">
+  <h3>{tkr}</h3>
+  <div class="acct-stat"><span class="k">Trades</span><span>{s['trades']}</span></div>
+  <div class="acct-stat"><span class="k">Win Rate</span><span class="{wr_cls}">{s['win_rate']*100:.0f}% ({s['wins']}W/{s['losses']}L)</span></div>
+  <div class="acct-stat"><span class="k">Net P&L</span><span class="{pnl_cls}">{pnl_fmt(s['pnl'])}</span></div>
+  <div class="acct-stat"><span class="k">Avg Win</span><span class="green">${s['avg_win']:.2f}</span></div>
+  <div class="acct-stat"><span class="k">Avg Loss</span><span class="red">${s['avg_loss']:.2f}</span></div>
+  <div class="acct-stat"><span class="k">Profit Factor</span><span class="{pnl_cls}">{pf_fmt(s['profit_factor'])}</span></div>
+</div>"""
+        col = 'two-col' if len(by_tkr) == 2 else ('three-col' if len(by_tkr) >= 3 else '')
+        symbol_section = f'<div class="section"><h2>Symbol Breakdown</h2><div class="{col}">{tkr_cards}</div></div>'
+
+    # ── Footer ─────────────────────────────────────────────────────────────────
+    year       = friday.year
+    instr_part = f' · {instr}' if instr else ''
+    footer = (f'<div class="footer">Generated {now_stamp()} · MONARCH Intelligence Report System v{VERSION}{instr_part}'
+              f' · <a href="{HUB_REL}" style="color:var(--accent)">← Castle Bravo</a>'
+              f'<br>Copyright &copy; {year} GreyBeard Consulting &nbsp;·&nbsp; '
+              f'<a href="{WEBSITE}" style="color:var(--accent)">{WEBSITE}</a></div>')
+
+    body = '\n'.join([header, kpis, day_table, acct_section, symbol_section, winners_section, breakdowns, footer])
+    return page_wrap(f"MONARCH Weekly – {friday.strftime('%Y-%m-%d')}", body)
 
 
 def generate_weekly(friday: date, all_trades: List[dict],
@@ -171,9 +219,9 @@ def generate_weekly(friday: date, all_trades: List[dict],
     by_day      = group_by_session(all_trades)
     week_trades = []
     for d in days:
-        week_trades.extend(t for t in by_day.get(d, []) if t['is_live'])
+        week_trades.extend(by_day.get(d, []))
 
-    print(f"  Weekly {friday} ({len(week_trades)} live trades)")
+    print(f"  Weekly {friday} ({len(week_trades)} trades)")
 
     html  = build_weekly_html(friday, all_trades, index, reports_dir)
     fname = f"weekly_{friday.strftime('%Y%m%d')}.html"
