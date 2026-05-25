@@ -118,5 +118,7 @@ $Moved | ForEach-Object { Write-Host $_ }
 if ($Failed.Count -gt 0) {
     Write-Warning "-- $($Failed.Count / 2) file(s) could not be moved (is NinjaTrader 8 running?):"
     $Failed | ForEach-Object { Write-Warning $_ }
-    exit 2
 }
+
+Write-Host "`nClosing in 60 seconds..."
+Start-Sleep -Seconds 60
