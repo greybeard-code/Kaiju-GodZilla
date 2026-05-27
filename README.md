@@ -9,9 +9,9 @@ A NinjaTrader 8 trading system built around six specialized signal indicators un
 ## Components
 
 ### GodZillaKilla — ATM Trading Strategy
-*Current version: 1.7.1*
+*Current version: 1.8*
 
-Automated NinjaTrader 8 strategy that reads signals from all six GodZilla Suite sub-indicators and executes ATM or Fixed-Ticks trades based on configurable confluence rules. Includes session filters, EMA filter, news filter, daily PnL limits, martingale recovery, and a full SharpDX dashboard.
+Automated NinjaTrader 8 strategy that reads signals from all six GodZilla Suite sub-indicators and executes ATM or Fixed-Ticks trades based on configurable confluence rules. Includes session filters, EMA filter, news filter, daily PnL limits, martingale recovery, a full SharpDX dashboard, and a floating "noble" dark navy control panel with drag, scale, and minimize support.
 
 → [GodZillaKilla.md](documents/GodZillaKilla.md)
 
@@ -27,9 +27,9 @@ Standalone Windows executable that turns GodZilla trade logs into browser-based 
 ---
 
 ### GodZuki — Signal Indicator
-*Current version: 1.1*
+*Current version: 1.2*
 
-Pure signal indicator version of GodZillaKilla. No trading — add GodZuki to any chart to visualize the same confluence signals, trigger audio alerts, log signal history to CSV, and expose all signal values in the NT8 Data Box. Signal Set 1 and Set 2 draw independently on the same bar. Useful for monitoring, backtesting signal quality, and driving custom strategies via public `Series<double>` outputs.
+Pure signal indicator version of GodZillaKilla. No trading — add GodZuki to any chart to visualize the same confluence signals, trigger audio alerts, log signal history to CSV, and expose all signal values in the NT8 Data Box. Signal Set 1 and Set 2 draw independently on the same bar. Per-indicator **Require** flags (Set 1 and Set 2) enforce that a named indicator must be among the signals that actually fired before a group trigger is counted. Useful for monitoring, backtesting signal quality, and driving custom strategies via public `Series<double>` outputs.
 
 → [GodZuki.md](documents/GodZuki.md)
 
@@ -71,8 +71,8 @@ All six expose a `Signal_Trade` series using a consistent **−1 / 0 / +1** (or 
 
 | File | Purpose |
 |---|---|
-| `GodZillaKilla.cs` | ATM trading strategy (v1.7.1) |
-| `GodZuki.cs` | Signal visualization indicator (v1.1) |
+| `GodZillaKilla.cs` | ATM trading strategy (v1.8) |
+| `GodZuki.cs` | Signal visualization indicator (v1.2) |
 | `gbKingOrderBlock.cs` | KO sub-indicator |
 | `gbPANAKanal.cs` | PA sub-indicator |
 | `gbThunderZilla.cs` | TH sub-indicator |

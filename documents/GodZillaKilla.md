@@ -1,6 +1,6 @@
 # GodZillaKilla — ATM Trading Strategy
 
-**Version:** 1.7.5
+**Version:** 1.8
 **Namespace:** `NinjaTrader.NinjaScript.Strategies.Playr101`
 **Author:** Playr101
 **Credits:** GreyBeard, ninZa.co, RenkoKings, ES, rbro112
@@ -13,7 +13,7 @@ GodZillaKilla is a NinjaTrader 8 strategy that reads signals from the six GodZil
 
 | Version | Summary |
 |---|---|
-| **1.7.5** | Control panel visual overhaul to "noble" dark navy style (matching Whisky). Gradient+glow title text, SVG pill minimize button, custom ControlTemplate buttons with hover/press effects. `ControlPanelSize` property added (`Large`/`Medium`/`Small`/`Minimized` = 100%/75%/50%/title-only). Double-click cycles all four states; pill button toggles `Minimized` ↔ `Large`. CSV log filename now uses `Time[0]` (bar time) instead of `DateTime.Now`, so replay/playback sessions produce correctly dated files. |
+| **1.8** | Control panel visual overhaul to "noble" dark navy style (matching Whisky). Gradient+glow title text, SVG pill minimize button, custom ControlTemplate buttons with hover/press effects. `ControlPanelSize` property added (`Large`/`Medium`/`Small`/`Minimized` = 100%/75%/50%/title-only). Double-click cycles all four states; pill button toggles `Minimized` ↔ `Large`. CSV log filename now uses `Time[0]` (bar time) instead of `DateTime.Now`, so replay/playback sessions produce correctly dated files. |
 | **1.7.4** | Control panel converted to floating draggable panel (Whisky style). Title bar drag to reposition; double-click title bar cycles scale (100% → 75% → 50%); `▼`/`▶` minimize button collapses body to title bar only. Account name added below Instrument. `ControlPanelLeft`/`ControlPanelTop` properties persist position across chart reloads. Dashboard Display properties reordered: HUD settings first, control panel settings at bottom. |
 | **1.7.3** | Per-indicator **Require** flags added for both Set 1 and Set 2. When a `Require` flag is enabled, that indicator must be among the signals that fired in the trigger direction — a count that reaches Required Count without the required indicator does not trigger. Defaults to false (no change to existing behavior). HUD signal tracking split into two lines: `Set1 Enabled:` and `Set2 Enabled:` (Set 2 line hidden when Set 2 is disabled). Required indicators are prefixed with `+` on both lines. |
 | **1.7.2** | Session PnL reset now fires from `Bars.IsFirstBarOfSession` on the primary bar series at the correct futures session open (e.g. 1700 CST for ES), not from the tick series at midnight. Martingale recovery blocked and `EnableMartingaleOnStopLoss` hidden in FixedTicks mode. `NC_Brush` hidden when `UseNCSignals = false`. NobleCloud Properties panel labels renamed from "NC:" to "NobleCloud:". |
