@@ -522,8 +522,8 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 DashboardSize = GodZillaHudSize.Normal;
                 ShowControlPanel = true;
                 ControlPanelPosition = HudCorner.TopLeft;
-                PanelLeft = 10.0;
-                PanelTop  = 50.0;
+                ControlPanelLeft = 10.0;
+                ControlPanelTop  = 50.0;
 
                 ShowIndividualSignalStats = false;     // Default to Hidden
                 ShowGroupSignalTrackingStats = true;
@@ -6798,7 +6798,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     {
                         HorizontalAlignment = HorizontalAlignment.Left,
                         VerticalAlignment   = VerticalAlignment.Top,
-                        Margin              = new Thickness (PanelLeft, PanelTop, 0, 0),
+                        Margin              = new Thickness (ControlPanelLeft, ControlPanelTop, 0, 0),
                         Child               = inner
                     };
                     double s = PanelScales[_panelScaleIndex];
@@ -6982,8 +6982,8 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             if (el != null) el.ReleaseMouseCapture ();
             if (_controlPanel != null)
             {
-                PanelLeft = _controlPanel.Margin.Left;
-                PanelTop  = _controlPanel.Margin.Top;
+                ControlPanelLeft = _controlPanel.Margin.Left;
+                ControlPanelTop  = _controlPanel.Margin.Top;
             }
         }
 
@@ -9640,39 +9640,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Show Control Panel", Order = 3, GroupName = "Dashboard Display",
-            Description = "Show the WPF arm/auto-arm/close-all button panel.")]
-        public bool ShowControlPanel
-        {
-            get; set;
-        }
-
-        [NinjaScriptProperty]
-        [Display (Name = "Control Panel Position", Order = 4, GroupName = "Dashboard Display",
-            Description = "Initial corner for the control panel (overridden by Panel Left/Top once dragged).")]
-        public HudCorner ControlPanelPosition
-        {
-            get; set;
-        }
-
-        [NinjaScriptProperty]
-        [Display (Name = "Panel Left", Order = 42, GroupName = "Dashboard Display",
-            Description = "Horizontal pixel offset of the floating control panel. Updated automatically when you drag the panel.")]
-        public double PanelLeft
-        {
-            get; set;
-        }
-
-        [NinjaScriptProperty]
-        [Display (Name = "Panel Top", Order = 43, GroupName = "Dashboard Display",
-            Description = "Vertical pixel offset of the floating control panel. Updated automatically when you drag the panel.")]
-        public double PanelTop
-        {
-            get; set;
-        }
-
-        [NinjaScriptProperty]
-        [Display (Name = "Show Individual Signal Stats", Order = 5, GroupName = "Dashboard Display",
+        [Display (Name = "Show Individual Signal Stats", Order = 3, GroupName = "Dashboard Display",
             Description = "When enabled, displays individual tracking (T/Lg/Sh/W/L) for each indicator on the dashboard.")]
         public bool ShowIndividualSignalStats
         {
@@ -9680,9 +9648,41 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Show Group Signal Stats", Order = 6, GroupName = "Dashboard Display",
+        [Display (Name = "Show Group Signal Stats", Order = 4, GroupName = "Dashboard Display",
             Description = "When enabled, displays the confluence/group signal tracking (T/Lg/Sh/W/L) on the dashboard.")]
         public bool ShowGroupSignalTrackingStats
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Show Control Panel", Order = 5, GroupName = "Dashboard Display",
+            Description = "Show the WPF arm/auto-arm/close-all button panel.")]
+        public bool ShowControlPanel
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Control Panel Position", Order = 6, GroupName = "Dashboard Display",
+            Description = "Initial corner for the control panel (overridden by Control Panel Left/Top once dragged).")]
+        public HudCorner ControlPanelPosition
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Control Panel Left", Order = 7, GroupName = "Dashboard Display",
+            Description = "Horizontal pixel offset of the floating control panel. Updated automatically when you drag the panel.")]
+        public double ControlPanelLeft
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Control Panel Top", Order = 8, GroupName = "Dashboard Display",
+            Description = "Vertical pixel offset of the floating control panel. Updated automatically when you drag the panel.")]
+        public double ControlPanelTop
         {
             get; set;
         }
