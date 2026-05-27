@@ -24,7 +24,6 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
-using System.Windows.Shapes;
 using System.Xml.Serialization;
 // SharpDX collides with WPF on Brush/Color/FontWeight/FontStyle - alias per AGENTS.md
 using Brush = System.Windows.Media.Brush;
