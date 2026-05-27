@@ -68,7 +68,7 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 		}
 
 		#region Variables
-		private string _version = "1.0.0";
+		private string _version = "1.2";
 
 		private gbKingOrderBlock _king;
 		private gbPANAKanal      _pana;
@@ -119,7 +119,7 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 			{
 				Description = "GodZuki — pure signal indicator. KO/PA/TH/SJ/SU/NC signals with EMA filter, audio alerts, and CSV logging. No trading.";
 				Name        = "GodZuki";
-				_version    = "1.1";
+				_version    = "1.2";
 
 				IsOverlay                = true;
 				IsAutoScale              = false;
@@ -148,21 +148,21 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 
 				// Signals — Set 1
 				GroupTriggerSet1RequiredCount = 2;
-				UseKOSignals = false;  KO_LongOperator = GodZukiSignalOperator.Equal; KO_LongValue = 1;  KO_ShortOperator = GodZukiSignalOperator.Equal; KO_ShortValue = -1;
-				UsePASignals = true;   PA_LongOperator = GodZukiSignalOperator.Equal; PA_LongValue = 2;  PA_ShortOperator = GodZukiSignalOperator.Equal; PA_ShortValue = -2;
-				UseTHSignals = true;   TH_LongOperator = GodZukiSignalOperator.Equal; TH_LongValue = 2;  TH_ShortOperator = GodZukiSignalOperator.Equal; TH_ShortValue = -2;
-				UseSJSignals = true;   SJ_LongOperator = GodZukiSignalOperator.Equal; SJ_LongValue = 1;  SJ_ShortOperator = GodZukiSignalOperator.Equal; SJ_ShortValue = -1;
-				UseSUSignals = false;  SU_LongOperator = GodZukiSignalOperator.Equal; SU_LongValue = 1;  SU_ShortOperator = GodZukiSignalOperator.Equal; SU_ShortValue = -1;
-				UseNCSignals = false;  NC_LongOperator = GodZukiSignalOperator.Equal; NC_LongValue = 1;  NC_ShortOperator = GodZukiSignalOperator.Equal; NC_ShortValue = -1;
+				UseKOSignals = false;  RequireKOSignal = false;  KO_LongOperator = GodZukiSignalOperator.Equal; KO_LongValue = 1;  KO_ShortOperator = GodZukiSignalOperator.Equal; KO_ShortValue = -1;
+				UsePASignals = true;   RequirePASignal = false;  PA_LongOperator = GodZukiSignalOperator.Equal; PA_LongValue = 2;  PA_ShortOperator = GodZukiSignalOperator.Equal; PA_ShortValue = -2;
+				UseTHSignals = true;   RequireTHSignal = false;  TH_LongOperator = GodZukiSignalOperator.Equal; TH_LongValue = 2;  TH_ShortOperator = GodZukiSignalOperator.Equal; TH_ShortValue = -2;
+				UseSJSignals = true;   RequireSJSignal = false;  SJ_LongOperator = GodZukiSignalOperator.Equal; SJ_LongValue = 1;  SJ_ShortOperator = GodZukiSignalOperator.Equal; SJ_ShortValue = -1;
+				UseSUSignals = false;  RequireSUSignal = false;  SU_LongOperator = GodZukiSignalOperator.Equal; SU_LongValue = 1;  SU_ShortOperator = GodZukiSignalOperator.Equal; SU_ShortValue = -1;
+				UseNCSignals = false;  RequireNCSignal = false;  NC_LongOperator = GodZukiSignalOperator.Equal; NC_LongValue = 1;  NC_ShortOperator = GodZukiSignalOperator.Equal; NC_ShortValue = -1;
 
 				// Signals — Set 2
 				EnableGroupTriggerSet2 = false; GroupTriggerSet2RequiredCount = 3;
-				G2_UseKOSignals = false; G2_KO_LongOperator = GodZukiSignalOperator.Equal; G2_KO_LongValue = 1;  G2_KO_ShortOperator = GodZukiSignalOperator.Equal; G2_KO_ShortValue = -1;
-				G2_UsePASignals = true;  G2_PA_LongOperator = GodZukiSignalOperator.Equal; G2_PA_LongValue = 3;  G2_PA_ShortOperator = GodZukiSignalOperator.Equal; G2_PA_ShortValue = -3;
-				G2_UseTHSignals = true;  G2_TH_LongOperator = GodZukiSignalOperator.Equal; G2_TH_LongValue = 3;  G2_TH_ShortOperator = GodZukiSignalOperator.Equal; G2_TH_ShortValue = -3;
-				G2_UseSJSignals = true;  G2_SJ_LongOperator = GodZukiSignalOperator.Equal; G2_SJ_LongValue = 1;  G2_SJ_ShortOperator = GodZukiSignalOperator.Equal; G2_SJ_ShortValue = -1;
-				G2_UseSUSignals = false; G2_SU_LongOperator = GodZukiSignalOperator.Equal; G2_SU_LongValue = 1;  G2_SU_ShortOperator = GodZukiSignalOperator.Equal; G2_SU_ShortValue = -1;
-				G2_UseNCSignals = false; G2_NC_LongOperator = GodZukiSignalOperator.Equal; G2_NC_LongValue = 1;  G2_NC_ShortOperator = GodZukiSignalOperator.Equal; G2_NC_ShortValue = -1;
+				G2_UseKOSignals = false; G2_RequireKOSignal = false; G2_KO_LongOperator = GodZukiSignalOperator.Equal; G2_KO_LongValue = 1;  G2_KO_ShortOperator = GodZukiSignalOperator.Equal; G2_KO_ShortValue = -1;
+				G2_UsePASignals = true;  G2_RequirePASignal = false; G2_PA_LongOperator = GodZukiSignalOperator.Equal; G2_PA_LongValue = 3;  G2_PA_ShortOperator = GodZukiSignalOperator.Equal; G2_PA_ShortValue = -3;
+				G2_UseTHSignals = true;  G2_RequireTHSignal = false; G2_TH_LongOperator = GodZukiSignalOperator.Equal; G2_TH_LongValue = 3;  G2_TH_ShortOperator = GodZukiSignalOperator.Equal; G2_TH_ShortValue = -3;
+				G2_UseSJSignals = true;  G2_RequireSJSignal = false; G2_SJ_LongOperator = GodZukiSignalOperator.Equal; G2_SJ_LongValue = 1;  G2_SJ_ShortOperator = GodZukiSignalOperator.Equal; G2_SJ_ShortValue = -1;
+				G2_UseSUSignals = false; G2_RequireSUSignal = false; G2_SU_LongOperator = GodZukiSignalOperator.Equal; G2_SU_LongValue = 1;  G2_SU_ShortOperator = GodZukiSignalOperator.Equal; G2_SU_ShortValue = -1;
+				G2_UseNCSignals = false; G2_RequireNCSignal = false; G2_NC_LongOperator = GodZukiSignalOperator.Equal; G2_NC_LongValue = 1;  G2_NC_ShortOperator = GodZukiSignalOperator.Equal; G2_NC_ShortValue = -1;
 
 				// Filters
 				EnableEmaFilter = false; EmaShortPeriod = 21; EmaLongPeriod = 50;
@@ -255,12 +255,18 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 				}
 				if (EnableDebug)
 				{
-					var en=new List<string>();
-					if(UseKOSignals)en.Add("KO"); if(UsePASignals)en.Add("PA"); if(UseTHSignals)en.Add("TH");
-					if(UseSJSignals)en.Add("SJ"); if(UseSUSignals)en.Add("SU"); if(UseNCSignals)en.Add("NC");
-					Print(string.Format("[{0}] DataLoaded | Instr={1} | Signals=[{2}] | Set1Req={3} | Set2={4} | EMA={5} | Log={6}",
-						Name, Instrument.FullName, string.Join(",", en), GroupTriggerSet1RequiredCount,
-						EnableGroupTriggerSet2?"ON":"OFF",
+					var en1=new List<string>();
+					if(UseKOSignals)en1.Add((RequireKOSignal?"+":"")+"KO"); if(UsePASignals)en1.Add((RequirePASignal?"+":"")+"PA"); if(UseTHSignals)en1.Add((RequireTHSignal?"+":"")+"TH");
+					if(UseSJSignals)en1.Add((RequireSJSignal?"+":"")+"SJ"); if(UseSUSignals)en1.Add((RequireSUSignal?"+":"")+"SU"); if(UseNCSignals)en1.Add((RequireNCSignal?"+":"")+"NC");
+					var en2=new List<string>();
+					if(EnableGroupTriggerSet2){
+						if(G2_UseKOSignals)en2.Add((G2_RequireKOSignal?"+":"")+"KO"); if(G2_UsePASignals)en2.Add((G2_RequirePASignal?"+":"")+"PA"); if(G2_UseTHSignals)en2.Add((G2_RequireTHSignal?"+":"")+"TH");
+						if(G2_UseSJSignals)en2.Add((G2_RequireSJSignal?"+":"")+"SJ"); if(G2_UseSUSignals)en2.Add((G2_RequireSUSignal?"+":"")+"SU"); if(G2_UseNCSignals)en2.Add((G2_RequireNCSignal?"+":"")+"NC");
+					}
+					Print(string.Format("[{0}] DataLoaded | Instr={1} | Set1=[{2}] | Set2=[{3}] | Set1Req={4} | EMA={5} | Log={6}",
+						Name, Instrument.FullName, string.Join(",", en1),
+						EnableGroupTriggerSet2?string.Join(",", en2):"OFF",
+						GroupTriggerSet1RequiredCount,
 						EnableEmaFilter?"ON ("+EmaShortPeriod+"/"+EmaLongPeriod+")":"OFF",
 						LogEnabled?"ON":"OFF"));
 				}
@@ -474,8 +480,10 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 			if (UseSUSignals){if(suL)la++;else if(suS)sa++;}
 			if (UseNCSignals){if(ncL)la++;else if(ncS)sa++;}
 			if (la>=needed&&sa>=needed) return r;
-			if (la>=needed){r.Long=true;r.GroupSize=needed;r.UsesKO=UseKOSignals&&koL;r.UsesPA=UsePASignals&&paL;r.UsesTH=UseTHSignals&&thL;r.UsesSJ=UseSJSignals&&sjL;r.UsesSU=UseSUSignals&&suL;r.UsesNC=UseNCSignals&&ncL;}
-			else if(sa>=needed){r.Short=true;r.GroupSize=needed;r.UsesKO=UseKOSignals&&koS;r.UsesPA=UsePASignals&&paS;r.UsesTH=UseTHSignals&&thS;r.UsesSJ=UseSJSignals&&sjS;r.UsesSU=UseSUSignals&&suS;r.UsesNC=UseNCSignals&&ncS;}
+			bool lrm=(!UseKOSignals||!RequireKOSignal||koL)&&(!UsePASignals||!RequirePASignal||paL)&&(!UseTHSignals||!RequireTHSignal||thL)&&(!UseSJSignals||!RequireSJSignal||sjL)&&(!UseSUSignals||!RequireSUSignal||suL)&&(!UseNCSignals||!RequireNCSignal||ncL);
+			bool srm=(!UseKOSignals||!RequireKOSignal||koS)&&(!UsePASignals||!RequirePASignal||paS)&&(!UseTHSignals||!RequireTHSignal||thS)&&(!UseSJSignals||!RequireSJSignal||sjS)&&(!UseSUSignals||!RequireSUSignal||suS)&&(!UseNCSignals||!RequireNCSignal||ncS);
+			if (la>=needed&&lrm){r.Long=true;r.GroupSize=needed;r.UsesKO=UseKOSignals&&koL;r.UsesPA=UsePASignals&&paL;r.UsesTH=UseTHSignals&&thL;r.UsesSJ=UseSJSignals&&sjL;r.UsesSU=UseSUSignals&&suL;r.UsesNC=UseNCSignals&&ncL;}
+			else if(sa>=needed&&srm){r.Short=true;r.GroupSize=needed;r.UsesKO=UseKOSignals&&koS;r.UsesPA=UsePASignals&&paS;r.UsesTH=UseTHSignals&&thS;r.UsesSJ=UseSJSignals&&sjS;r.UsesSU=UseSUSignals&&suS;r.UsesNC=UseNCSignals&&ncS;}
 			return r;
 		}
 
@@ -493,8 +501,10 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 			if(G2_UseSUSignals){sus=ComputeSignal(true,suRaw,G2_SU_LongOperator,G2_SU_LongValue,G2_SU_ShortOperator,G2_SU_ShortValue);if(sus>0)la++;else if(sus<0)sa++;}
 			if(G2_UseNCSignals){ncs=ComputeSignal(true,ncRaw,G2_NC_LongOperator,G2_NC_LongValue,G2_NC_ShortOperator,G2_NC_ShortValue);if(ncs>0)la++;else if(ncs<0)sa++;}
 			if (la>=needed&&sa>=needed) return r;
-			if(la>=needed){r.Long=true;r.GroupSize=needed;r.UsesKO=G2_UseKOSignals&&kos>0;r.UsesPA=G2_UsePASignals&&pas>0;r.UsesTH=G2_UseTHSignals&&ths>0;r.UsesSJ=G2_UseSJSignals&&sjs>0;r.UsesSU=G2_UseSUSignals&&sus>0;r.UsesNC=G2_UseNCSignals&&ncs>0;}
-			else if(sa>=needed){r.Short=true;r.GroupSize=needed;r.UsesKO=G2_UseKOSignals&&kos<0;r.UsesPA=G2_UsePASignals&&pas<0;r.UsesTH=G2_UseTHSignals&&ths<0;r.UsesSJ=G2_UseSJSignals&&sjs<0;r.UsesSU=G2_UseSUSignals&&sus<0;r.UsesNC=G2_UseNCSignals&&ncs<0;}
+			bool lrm=(!G2_UseKOSignals||!G2_RequireKOSignal||kos>0)&&(!G2_UsePASignals||!G2_RequirePASignal||pas>0)&&(!G2_UseTHSignals||!G2_RequireTHSignal||ths>0)&&(!G2_UseSJSignals||!G2_RequireSJSignal||sjs>0)&&(!G2_UseSUSignals||!G2_RequireSUSignal||sus>0)&&(!G2_UseNCSignals||!G2_RequireNCSignal||ncs>0);
+			bool srm=(!G2_UseKOSignals||!G2_RequireKOSignal||kos<0)&&(!G2_UsePASignals||!G2_RequirePASignal||pas<0)&&(!G2_UseTHSignals||!G2_RequireTHSignal||ths<0)&&(!G2_UseSJSignals||!G2_RequireSJSignal||sjs<0)&&(!G2_UseSUSignals||!G2_RequireSUSignal||sus<0)&&(!G2_UseNCSignals||!G2_RequireNCSignal||ncs<0);
+			if(la>=needed&&lrm){r.Long=true;r.GroupSize=needed;r.UsesKO=G2_UseKOSignals&&kos>0;r.UsesPA=G2_UsePASignals&&pas>0;r.UsesTH=G2_UseTHSignals&&ths>0;r.UsesSJ=G2_UseSJSignals&&sjs>0;r.UsesSU=G2_UseSUSignals&&sus>0;r.UsesNC=G2_UseNCSignals&&ncs>0;}
+			else if(sa>=needed&&srm){r.Short=true;r.GroupSize=needed;r.UsesKO=G2_UseKOSignals&&kos<0;r.UsesPA=G2_UsePASignals&&pas<0;r.UsesTH=G2_UseTHSignals&&ths<0;r.UsesSJ=G2_UseSJSignals&&sjs<0;r.UsesSU=G2_UseSUSignals&&sus<0;r.UsesNC=G2_UseNCSignals&&ncs<0;}
 			return r;
 		}
 
@@ -797,32 +807,32 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 
 		private void ModifySignalProperties(PropertyDescriptorCollection col)
 		{
-			if (!UseKOSignals) RemoveProperties(col,"KO_LongOperator","KO_LongValue","KO_ShortOperator","KO_ShortValue","ShowKOSignalArrows","ShowKOSignalArrowLabels","KOSignalArrowText","KOSignalArrowBrush");
+			if (!UseKOSignals) RemoveProperties(col,"RequireKOSignal","KO_LongOperator","KO_LongValue","KO_ShortOperator","KO_ShortValue","ShowKOSignalArrows","ShowKOSignalArrowLabels","KOSignalArrowText","KOSignalArrowBrush");
 			else { if (!ShowKOSignalArrows) RemoveProperties(col,"ShowKOSignalArrowLabels","KOSignalArrowText","KOSignalArrowBrush"); else if (!ShowKOSignalArrowLabels) RemoveProperties(col,"KOSignalArrowText"); }
-			if (!UsePASignals) RemoveProperties(col,"PA_LongOperator","PA_LongValue","PA_ShortOperator","PA_ShortValue","ShowPASignalArrows","ShowPASignalArrowLabels","PASignalArrowText","PASignalArrowBrush");
+			if (!UsePASignals) RemoveProperties(col,"RequirePASignal","PA_LongOperator","PA_LongValue","PA_ShortOperator","PA_ShortValue","ShowPASignalArrows","ShowPASignalArrowLabels","PASignalArrowText","PASignalArrowBrush");
 			else { if (!ShowPASignalArrows) RemoveProperties(col,"ShowPASignalArrowLabels","PASignalArrowText","PASignalArrowBrush"); else if (!ShowPASignalArrowLabels) RemoveProperties(col,"PASignalArrowText"); }
-			if (!UseTHSignals) RemoveProperties(col,"TH_LongOperator","TH_LongValue","TH_ShortOperator","TH_ShortValue","ShowTHSignalArrows","ShowTHSignalArrowLabels","THSignalArrowText","THSignalArrowBrush");
+			if (!UseTHSignals) RemoveProperties(col,"RequireTHSignal","TH_LongOperator","TH_LongValue","TH_ShortOperator","TH_ShortValue","ShowTHSignalArrows","ShowTHSignalArrowLabels","THSignalArrowText","THSignalArrowBrush");
 			else { if (!ShowTHSignalArrows) RemoveProperties(col,"ShowTHSignalArrowLabels","THSignalArrowText","THSignalArrowBrush"); else if (!ShowTHSignalArrowLabels) RemoveProperties(col,"THSignalArrowText"); }
-			if (!UseSJSignals) RemoveProperties(col,"SJ_LongOperator","SJ_LongValue","SJ_ShortOperator","SJ_ShortValue","ShowSJSignalArrows","ShowSJSignalArrowLabels","SJSignalArrowText","SJSignalArrowBrush");
+			if (!UseSJSignals) RemoveProperties(col,"RequireSJSignal","SJ_LongOperator","SJ_LongValue","SJ_ShortOperator","SJ_ShortValue","ShowSJSignalArrows","ShowSJSignalArrowLabels","SJSignalArrowText","SJSignalArrowBrush");
 			else { if (!ShowSJSignalArrows) RemoveProperties(col,"ShowSJSignalArrowLabels","SJSignalArrowText","SJSignalArrowBrush"); else if (!ShowSJSignalArrowLabels) RemoveProperties(col,"SJSignalArrowText"); }
-			if (!UseSUSignals) RemoveProperties(col,"SU_LongOperator","SU_LongValue","SU_ShortOperator","SU_ShortValue","ShowSUSignalArrows","ShowSUSignalArrowLabels","SUSignalArrowText","SUSignalArrowBrush");
+			if (!UseSUSignals) RemoveProperties(col,"RequireSUSignal","SU_LongOperator","SU_LongValue","SU_ShortOperator","SU_ShortValue","ShowSUSignalArrows","ShowSUSignalArrowLabels","SUSignalArrowText","SUSignalArrowBrush");
 			else { if (!ShowSUSignalArrows) RemoveProperties(col,"ShowSUSignalArrowLabels","SUSignalArrowText","SUSignalArrowBrush"); else if (!ShowSUSignalArrowLabels) RemoveProperties(col,"SUSignalArrowText"); }
-			if (!UseNCSignals) RemoveProperties(col,"NC_LongOperator","NC_LongValue","NC_ShortOperator","NC_ShortValue","ShowNCSignalArrows","ShowNCSignalArrowLabels","NCSignalArrowText","NCSignalArrowBrush","NC_Brush");
+			if (!UseNCSignals) RemoveProperties(col,"RequireNCSignal","NC_LongOperator","NC_LongValue","NC_ShortOperator","NC_ShortValue","ShowNCSignalArrows","ShowNCSignalArrowLabels","NCSignalArrowText","NCSignalArrowBrush","NC_Brush");
 			else { if (!ShowNCSignalArrows) RemoveProperties(col,"ShowNCSignalArrowLabels","NCSignalArrowText","NCSignalArrowBrush"); else if (!ShowNCSignalArrowLabels) RemoveProperties(col,"NCSignalArrowText"); }
 		}
 
 		private void ModifyGroupTriggerProperties(PropertyDescriptorCollection col)
 		{
 			if (CountEnabledSignals()<1) RemoveProperties(col,"GroupTriggerSet1RequiredCount");
-			if (!EnableGroupTriggerSet2) RemoveProperties(col,"GroupTriggerSet2RequiredCount","G2_UseKOSignals","G2_KO_LongOperator","G2_KO_LongValue","G2_KO_ShortOperator","G2_KO_ShortValue","G2_UsePASignals","G2_PA_LongOperator","G2_PA_LongValue","G2_PA_ShortOperator","G2_PA_ShortValue","G2_UseTHSignals","G2_TH_LongOperator","G2_TH_LongValue","G2_TH_ShortOperator","G2_TH_ShortValue","G2_UseSJSignals","G2_SJ_LongOperator","G2_SJ_LongValue","G2_SJ_ShortOperator","G2_SJ_ShortValue","G2_UseSUSignals","G2_SU_LongOperator","G2_SU_LongValue","G2_SU_ShortOperator","G2_SU_ShortValue","G2_UseNCSignals","G2_NC_LongOperator","G2_NC_LongValue","G2_NC_ShortOperator","G2_NC_ShortValue");
+			if (!EnableGroupTriggerSet2) RemoveProperties(col,"GroupTriggerSet2RequiredCount","G2_UseKOSignals","G2_RequireKOSignal","G2_KO_LongOperator","G2_KO_LongValue","G2_KO_ShortOperator","G2_KO_ShortValue","G2_UsePASignals","G2_RequirePASignal","G2_PA_LongOperator","G2_PA_LongValue","G2_PA_ShortOperator","G2_PA_ShortValue","G2_UseTHSignals","G2_RequireTHSignal","G2_TH_LongOperator","G2_TH_LongValue","G2_TH_ShortOperator","G2_TH_ShortValue","G2_UseSJSignals","G2_RequireSJSignal","G2_SJ_LongOperator","G2_SJ_LongValue","G2_SJ_ShortOperator","G2_SJ_ShortValue","G2_UseSUSignals","G2_RequireSUSignal","G2_SU_LongOperator","G2_SU_LongValue","G2_SU_ShortOperator","G2_SU_ShortValue","G2_UseNCSignals","G2_RequireNCSignal","G2_NC_LongOperator","G2_NC_LongValue","G2_NC_ShortOperator","G2_NC_ShortValue");
 			else
 			{
-				if (!G2_UseKOSignals) RemoveProperties(col,"G2_KO_LongOperator","G2_KO_LongValue","G2_KO_ShortOperator","G2_KO_ShortValue");
-				if (!G2_UsePASignals) RemoveProperties(col,"G2_PA_LongOperator","G2_PA_LongValue","G2_PA_ShortOperator","G2_PA_ShortValue");
-				if (!G2_UseTHSignals) RemoveProperties(col,"G2_TH_LongOperator","G2_TH_LongValue","G2_TH_ShortOperator","G2_TH_ShortValue");
-				if (!G2_UseSJSignals) RemoveProperties(col,"G2_SJ_LongOperator","G2_SJ_LongValue","G2_SJ_ShortOperator","G2_SJ_ShortValue");
-				if (!G2_UseSUSignals) RemoveProperties(col,"G2_SU_LongOperator","G2_SU_LongValue","G2_SU_ShortOperator","G2_SU_ShortValue");
-				if (!G2_UseNCSignals) RemoveProperties(col,"G2_NC_LongOperator","G2_NC_LongValue","G2_NC_ShortOperator","G2_NC_ShortValue");
+				if (!G2_UseKOSignals) RemoveProperties(col,"G2_RequireKOSignal","G2_KO_LongOperator","G2_KO_LongValue","G2_KO_ShortOperator","G2_KO_ShortValue");
+				if (!G2_UsePASignals) RemoveProperties(col,"G2_RequirePASignal","G2_PA_LongOperator","G2_PA_LongValue","G2_PA_ShortOperator","G2_PA_ShortValue");
+				if (!G2_UseTHSignals) RemoveProperties(col,"G2_RequireTHSignal","G2_TH_LongOperator","G2_TH_LongValue","G2_TH_ShortOperator","G2_TH_ShortValue");
+				if (!G2_UseSJSignals) RemoveProperties(col,"G2_RequireSJSignal","G2_SJ_LongOperator","G2_SJ_LongValue","G2_SJ_ShortOperator","G2_SJ_ShortValue");
+				if (!G2_UseSUSignals) RemoveProperties(col,"G2_RequireSUSignal","G2_SU_LongOperator","G2_SU_LongValue","G2_SU_ShortOperator","G2_SU_ShortValue");
+				if (!G2_UseNCSignals) RemoveProperties(col,"G2_RequireNCSignal","G2_NC_LongOperator","G2_NC_LongValue","G2_NC_ShortOperator","G2_NC_ShortValue");
 			}
 			bool anyGroup=IsPrimaryGroupModeActive()||IsSecondaryGroupModeActive();
 			if (!anyGroup) { RemoveProperties(col,"ShowGroupTriggerArrows","ShowGroupTriggerArrowLabel","GroupTriggerArrowText","GroupTriggerBrush"); return; }
@@ -891,68 +901,80 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 
 		[NinjaScriptProperty][Display(Name="Set 1 Use KingOrderBlock",Order=10,GroupName="Signals")][RefreshProperties(RefreshProperties.All)]
 		public bool UseKOSignals{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 KingOrderBlock Long Operator",Order=11,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 Require KingOrderBlock",Order=11,GroupName="Signals",Description="When enabled, KingOrderBlock must be among the agreeing signals for Set 1 to trigger.")]
+		public bool RequireKOSignal{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 1 KingOrderBlock Long Operator",Order=12,GroupName="Signals")]
 		public GodZukiSignalOperator KO_LongOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 KingOrderBlock Long Value",Order=12,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 KingOrderBlock Long Value",Order=13,GroupName="Signals")]
 		public int KO_LongValue{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 KingOrderBlock Short Operator",Order=13,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 KingOrderBlock Short Operator",Order=14,GroupName="Signals")]
 		public GodZukiSignalOperator KO_ShortOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 KingOrderBlock Short Value",Order=14,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 KingOrderBlock Short Value",Order=15,GroupName="Signals")]
 		public int KO_ShortValue{get;set;}
 
 		[NinjaScriptProperty][Display(Name="Set 1 Use PANAKanal",Order=20,GroupName="Signals")][RefreshProperties(RefreshProperties.All)]
 		public bool UsePASignals{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 PANAKanal Long Operator",Order=21,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 Require PANAKanal",Order=21,GroupName="Signals",Description="When enabled, PANAKanal must be among the agreeing signals for Set 1 to trigger.")]
+		public bool RequirePASignal{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 1 PANAKanal Long Operator",Order=22,GroupName="Signals")]
 		public GodZukiSignalOperator PA_LongOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 PANAKanal Long Value",Order=22,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 PANAKanal Long Value",Order=23,GroupName="Signals")]
 		public int PA_LongValue{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 PANAKanal Short Operator",Order=23,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 PANAKanal Short Operator",Order=24,GroupName="Signals")]
 		public GodZukiSignalOperator PA_ShortOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 PANAKanal Short Value",Order=24,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 PANAKanal Short Value",Order=25,GroupName="Signals")]
 		public int PA_ShortValue{get;set;}
 
 		[NinjaScriptProperty][Display(Name="Set 1 Use ThunderZilla",Order=30,GroupName="Signals")][RefreshProperties(RefreshProperties.All)]
 		public bool UseTHSignals{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 ThunderZilla Long Operator",Order=31,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 Require ThunderZilla",Order=31,GroupName="Signals",Description="When enabled, ThunderZilla must be among the agreeing signals for Set 1 to trigger.")]
+		public bool RequireTHSignal{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 1 ThunderZilla Long Operator",Order=32,GroupName="Signals")]
 		public GodZukiSignalOperator TH_LongOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 ThunderZilla Long Value",Order=32,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 ThunderZilla Long Value",Order=33,GroupName="Signals")]
 		public int TH_LongValue{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 ThunderZilla Short Operator",Order=33,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 ThunderZilla Short Operator",Order=34,GroupName="Signals")]
 		public GodZukiSignalOperator TH_ShortOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 ThunderZilla Short Value",Order=34,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 ThunderZilla Short Value",Order=35,GroupName="Signals")]
 		public int TH_ShortValue{get;set;}
 
 		[NinjaScriptProperty][Display(Name="Set 1 Use SuperJumpBoost",Order=40,GroupName="Signals")][RefreshProperties(RefreshProperties.All)]
 		public bool UseSJSignals{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 SuperJumpBoost Long Operator",Order=41,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 Require SuperJumpBoost",Order=41,GroupName="Signals",Description="When enabled, SuperJumpBoost must be among the agreeing signals for Set 1 to trigger.")]
+		public bool RequireSJSignal{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 1 SuperJumpBoost Long Operator",Order=42,GroupName="Signals")]
 		public GodZukiSignalOperator SJ_LongOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 SuperJumpBoost Long Value",Order=42,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 SuperJumpBoost Long Value",Order=43,GroupName="Signals")]
 		public int SJ_LongValue{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 SuperJumpBoost Short Operator",Order=43,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 SuperJumpBoost Short Operator",Order=44,GroupName="Signals")]
 		public GodZukiSignalOperator SJ_ShortOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 SuperJumpBoost Short Value",Order=44,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 SuperJumpBoost Short Value",Order=45,GroupName="Signals")]
 		public int SJ_ShortValue{get;set;}
 
 		[NinjaScriptProperty][Display(Name="Set 1 Use SumoPullback",Order=50,GroupName="Signals")][RefreshProperties(RefreshProperties.All)]
 		public bool UseSUSignals{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 SumoPullback Long Operator",Order=51,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 Require SumoPullback",Order=51,GroupName="Signals",Description="When enabled, SumoPullback must be among the agreeing signals for Set 1 to trigger.")]
+		public bool RequireSUSignal{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 1 SumoPullback Long Operator",Order=52,GroupName="Signals")]
 		public GodZukiSignalOperator SU_LongOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 SumoPullback Long Value",Order=52,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 SumoPullback Long Value",Order=53,GroupName="Signals")]
 		public int SU_LongValue{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 SumoPullback Short Operator",Order=53,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 SumoPullback Short Operator",Order=54,GroupName="Signals")]
 		public GodZukiSignalOperator SU_ShortOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 SumoPullback Short Value",Order=54,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 SumoPullback Short Value",Order=55,GroupName="Signals")]
 		public int SU_ShortValue{get;set;}
 
 		[NinjaScriptProperty][Display(Name="Set 1 Use NobleCloud",Order=60,GroupName="Signals")][RefreshProperties(RefreshProperties.All)]
 		public bool UseNCSignals{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 NobleCloud Long Operator",Order=61,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 Require NobleCloud",Order=61,GroupName="Signals",Description="When enabled, NobleCloud must be among the agreeing signals for Set 1 to trigger.")]
+		public bool RequireNCSignal{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 1 NobleCloud Long Operator",Order=62,GroupName="Signals")]
 		public GodZukiSignalOperator NC_LongOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 NobleCloud Long Value",Order=62,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 NobleCloud Long Value",Order=63,GroupName="Signals")]
 		public int NC_LongValue{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 NobleCloud Short Operator",Order=63,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 NobleCloud Short Operator",Order=64,GroupName="Signals")]
 		public GodZukiSignalOperator NC_ShortOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 1 NobleCloud Short Value",Order=64,GroupName="Signals")]
+		[NinjaScriptProperty][Display(Name="Set 1 NobleCloud Short Value",Order=65,GroupName="Signals")]
 		public int NC_ShortValue{get;set;}
 
 		// ── Signals: Set 2 ───────────────────────────────────────────────────────
@@ -963,45 +985,57 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 
 		[NinjaScriptProperty][Display(Name="Set 2 Use KingOrderBlock",Order=80,GroupName="Signals")][RefreshProperties(RefreshProperties.All)]
 		public bool G2_UseKOSignals{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 KO Long Operator",Order=81,GroupName="Signals")]  public GodZukiSignalOperator G2_KO_LongOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 KO Long Value",Order=82,GroupName="Signals")]      public int G2_KO_LongValue{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 KO Short Operator",Order=83,GroupName="Signals")]  public GodZukiSignalOperator G2_KO_ShortOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 KO Short Value",Order=84,GroupName="Signals")]     public int G2_KO_ShortValue{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 Require KingOrderBlock",Order=81,GroupName="Signals",Description="When enabled, KingOrderBlock must be among the agreeing signals for Set 2 to trigger.")]
+		public bool G2_RequireKOSignal{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 KO Long Operator",Order=82,GroupName="Signals")]  public GodZukiSignalOperator G2_KO_LongOperator{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 KO Long Value",Order=83,GroupName="Signals")]      public int G2_KO_LongValue{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 KO Short Operator",Order=84,GroupName="Signals")]  public GodZukiSignalOperator G2_KO_ShortOperator{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 KO Short Value",Order=85,GroupName="Signals")]     public int G2_KO_ShortValue{get;set;}
 
 		[NinjaScriptProperty][Display(Name="Set 2 Use PANAKanal",Order=90,GroupName="Signals")][RefreshProperties(RefreshProperties.All)]
 		public bool G2_UsePASignals{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 PA Long Operator",Order=91,GroupName="Signals")]   public GodZukiSignalOperator G2_PA_LongOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 PA Long Value",Order=92,GroupName="Signals")]       public int G2_PA_LongValue{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 PA Short Operator",Order=93,GroupName="Signals")]   public GodZukiSignalOperator G2_PA_ShortOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 PA Short Value",Order=94,GroupName="Signals")]      public int G2_PA_ShortValue{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 Require PANAKanal",Order=91,GroupName="Signals",Description="When enabled, PANAKanal must be among the agreeing signals for Set 2 to trigger.")]
+		public bool G2_RequirePASignal{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 PA Long Operator",Order=92,GroupName="Signals")]   public GodZukiSignalOperator G2_PA_LongOperator{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 PA Long Value",Order=93,GroupName="Signals")]       public int G2_PA_LongValue{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 PA Short Operator",Order=94,GroupName="Signals")]   public GodZukiSignalOperator G2_PA_ShortOperator{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 PA Short Value",Order=95,GroupName="Signals")]      public int G2_PA_ShortValue{get;set;}
 
 		[NinjaScriptProperty][Display(Name="Set 2 Use ThunderZilla",Order=100,GroupName="Signals")][RefreshProperties(RefreshProperties.All)]
 		public bool G2_UseTHSignals{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 TH Long Operator",Order=101,GroupName="Signals")]  public GodZukiSignalOperator G2_TH_LongOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 TH Long Value",Order=102,GroupName="Signals")]      public int G2_TH_LongValue{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 TH Short Operator",Order=103,GroupName="Signals")] public GodZukiSignalOperator G2_TH_ShortOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 TH Short Value",Order=104,GroupName="Signals")]     public int G2_TH_ShortValue{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 Require ThunderZilla",Order=101,GroupName="Signals",Description="When enabled, ThunderZilla must be among the agreeing signals for Set 2 to trigger.")]
+		public bool G2_RequireTHSignal{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 TH Long Operator",Order=102,GroupName="Signals")]  public GodZukiSignalOperator G2_TH_LongOperator{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 TH Long Value",Order=103,GroupName="Signals")]      public int G2_TH_LongValue{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 TH Short Operator",Order=104,GroupName="Signals")] public GodZukiSignalOperator G2_TH_ShortOperator{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 TH Short Value",Order=105,GroupName="Signals")]     public int G2_TH_ShortValue{get;set;}
 
 		[NinjaScriptProperty][Display(Name="Set 2 Use SuperJumpBoost",Order=110,GroupName="Signals")][RefreshProperties(RefreshProperties.All)]
 		public bool G2_UseSJSignals{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 SJ Long Operator",Order=111,GroupName="Signals")]  public GodZukiSignalOperator G2_SJ_LongOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 SJ Long Value",Order=112,GroupName="Signals")]      public int G2_SJ_LongValue{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 SJ Short Operator",Order=113,GroupName="Signals")] public GodZukiSignalOperator G2_SJ_ShortOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 SJ Short Value",Order=114,GroupName="Signals")]     public int G2_SJ_ShortValue{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 Require SuperJumpBoost",Order=111,GroupName="Signals",Description="When enabled, SuperJumpBoost must be among the agreeing signals for Set 2 to trigger.")]
+		public bool G2_RequireSJSignal{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 SJ Long Operator",Order=112,GroupName="Signals")]  public GodZukiSignalOperator G2_SJ_LongOperator{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 SJ Long Value",Order=113,GroupName="Signals")]      public int G2_SJ_LongValue{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 SJ Short Operator",Order=114,GroupName="Signals")] public GodZukiSignalOperator G2_SJ_ShortOperator{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 SJ Short Value",Order=115,GroupName="Signals")]     public int G2_SJ_ShortValue{get;set;}
 
 		[NinjaScriptProperty][Display(Name="Set 2 Use SumoPullback",Order=120,GroupName="Signals")][RefreshProperties(RefreshProperties.All)]
 		public bool G2_UseSUSignals{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 SU Long Operator",Order=121,GroupName="Signals")]  public GodZukiSignalOperator G2_SU_LongOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 SU Long Value",Order=122,GroupName="Signals")]      public int G2_SU_LongValue{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 SU Short Operator",Order=123,GroupName="Signals")] public GodZukiSignalOperator G2_SU_ShortOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 SU Short Value",Order=124,GroupName="Signals")]     public int G2_SU_ShortValue{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 Require SumoPullback",Order=121,GroupName="Signals",Description="When enabled, SumoPullback must be among the agreeing signals for Set 2 to trigger.")]
+		public bool G2_RequireSUSignal{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 SU Long Operator",Order=122,GroupName="Signals")]  public GodZukiSignalOperator G2_SU_LongOperator{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 SU Long Value",Order=123,GroupName="Signals")]      public int G2_SU_LongValue{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 SU Short Operator",Order=124,GroupName="Signals")] public GodZukiSignalOperator G2_SU_ShortOperator{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 SU Short Value",Order=125,GroupName="Signals")]     public int G2_SU_ShortValue{get;set;}
 
 		[NinjaScriptProperty][Display(Name="Set 2 Use NobleCloud",Order=130,GroupName="Signals")][RefreshProperties(RefreshProperties.All)]
 		public bool G2_UseNCSignals{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 NC Long Operator",Order=131,GroupName="Signals")]  public GodZukiSignalOperator G2_NC_LongOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 NC Long Value",Order=132,GroupName="Signals")]      public int G2_NC_LongValue{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 NC Short Operator",Order=133,GroupName="Signals")] public GodZukiSignalOperator G2_NC_ShortOperator{get;set;}
-		[NinjaScriptProperty][Display(Name="Set 2 NC Short Value",Order=134,GroupName="Signals")]     public int G2_NC_ShortValue{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 Require NobleCloud",Order=131,GroupName="Signals",Description="When enabled, NobleCloud must be among the agreeing signals for Set 2 to trigger.")]
+		public bool G2_RequireNCSignal{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 NC Long Operator",Order=132,GroupName="Signals")]  public GodZukiSignalOperator G2_NC_LongOperator{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 NC Long Value",Order=133,GroupName="Signals")]      public int G2_NC_LongValue{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 NC Short Operator",Order=134,GroupName="Signals")] public GodZukiSignalOperator G2_NC_ShortOperator{get;set;}
+		[NinjaScriptProperty][Display(Name="Set 2 NC Short Value",Order=135,GroupName="Signals")]     public int G2_NC_ShortValue{get;set;}
 
 		// ── Filters ───────────────────────────────────────────────────────────────
 		[NinjaScriptProperty][Display(Name="Enable EMA Filter",Order=0,GroupName="Filters",Description="Longs require short EMA above long EMA. Shorts require short EMA below long EMA.")][RefreshProperties(RefreshProperties.All)]

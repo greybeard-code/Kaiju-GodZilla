@@ -1,6 +1,6 @@
 # GodZillaKilla — ATM Trading Strategy
 
-**Version:** 1.7.2
+**Version:** 1.7.3
 **Namespace:** `NinjaTrader.NinjaScript.Strategies.Playr101`
 **Author:** Playr101
 **Credits:** GreyBeard, ninZa.co, RenkoKings, ES, rbro112
@@ -13,6 +13,7 @@ GodZillaKilla is a NinjaTrader 8 strategy that reads signals from the six GodZil
 
 | Version | Summary |
 |---|---|
+| **1.7.3** | Per-indicator **Require** flags added for both Set 1 and Set 2. When a `Require` flag is enabled, that indicator must be among the signals that fired in the trigger direction — a count that reaches Required Count without the required indicator does not trigger. Defaults to false (no change to existing behavior). HUD signal tracking split into two lines: `Set1 Enabled:` and `Set2 Enabled:` (Set 2 line hidden when Set 2 is disabled). Required indicators are prefixed with `+` on both lines. |
 | **1.7.2** | Session PnL reset now fires from `Bars.IsFirstBarOfSession` on the primary bar series at the correct futures session open (e.g. 1700 CST for ES), not from the tick series at midnight. Martingale recovery blocked and `EnableMartingaleOnStopLoss` hidden in FixedTicks mode. `NC_Brush` hidden when `UseNCSignals = false`. NobleCloud Properties panel labels renamed from "NC:" to "NobleCloud:". |
 | **1.7.1** | `LogEnabled` defaults to true (required for MONARCH trade ingestion). ATM strategy field now shows a dropdown populated from ATM templates on disk (`FriendlyAtmConverter`). Descriptions added to all Properties panel fields. Namespace import updated to `GreyBeard`. Sub-indicator enums and category attributes moved to namespace scope. |
 | **1.7.0** | Reentrancy guard added to `FlattenEverything` (`_flattenLock` / `_flattenInProgress`) to prevent double-flatten on rapid tick sequences. `Account.Positions` iteration wrapped in `lock (Account.Positions)`. |
@@ -57,6 +58,15 @@ Two independent group trigger sets can be configured:
 **Required Count behavior:** With N indicators enabled and Required Count = R, the trigger fires when at least R signals agree in the same direction (long or short). Flat signals (0) are ignored. If both long and short sides both reach R on the same bar, the conflict guard suppresses the trigger. Setting Required Count = N effectively requires all enabled signals to agree.
 
 If both sets fire in conflicting directions on the same bar, no entry is taken.
+
+### Require Flags
+Each indicator in Set 1 and Set 2 has a corresponding **Require** flag (`Set 1 Require KingOrderBlock`, `Set 2 Require PANAKanal`, etc.). All default to `false`.
+
+When a Require flag is enabled, that indicator must be **one of the signals that actually fired** in the trigger direction on the entry bar. Meeting the Required Count without the required indicator vetoes the trigger entirely.
+
+**Example:** Set 1 has 6 indicators enabled, Required Count = 3, PANAKanal is required. If Sumo + JumpBoost + ThunderZilla all fire long (`longAgree = 3 = needed`) but PANAKanal did not fire, the trigger is suppressed. PANAKanal must appear among the 3 agreeing signals for the entry to proceed.
+
+Multiple indicators can be required simultaneously — all required indicators must be present in the agreeing set.
 
 ### EMA Filter
 Optional EMA filter using a short and long period. When enabled:
@@ -120,6 +130,8 @@ The SharpDX overlay panel shows:
 - Current trade status (IDLE / IN POSITION)
 - Last trade summary with PnL
 - Optional signal tracking stats (per-indicator win/loss counts and confluence combo stats)
+  - **Set1 Enabled** row — lists active Set 1 indicators; required indicators are prefixed with `+` (e.g. `KO, +PA, TH`)
+  - **Set2 Enabled** row — same for Set 2; hidden when Set 2 is disabled
 
 The HUD box auto-sizes to fit its content — width is measured dynamically using DirectWrite TextLayout so text is never clipped regardless of font size or dashboard size setting.
 
@@ -164,7 +176,7 @@ One row is written per closed trade. Defense #8 forced-close events also write a
 | Category | Key Properties |
 |---|---|
 | ATM Parameters | `OrderMode`, `AtmStrategy`, `MartingaleAtmStrategy`, `FixedOrderQuantity`, `FixedStopLossTicks`, `FixedProfitTargetTicks` |
-| Signals | `GroupTriggerSet1RequiredCount`, `UseKOSignals`…`UseNCSignals`, `KO_LongOperator`…`NC_ShortValue` |
+| Signals | `GroupTriggerSet1RequiredCount`, `UseKOSignals`…`UseNCSignals`, `RequireKOSignal`…`RequireNCSignal`, `KO_LongOperator`…`NC_ShortValue`, `G2_RequireKOSignal`…`G2_RequireNCSignal` |
 | Filters | `EnableEmaFilter`, `EmaShortPeriod`, `EmaLongPeriod`, `EnableNewsFilter` |
 | Session | `EnableTF1`…`EnableTF3`, `StartTime1`…`EndTime3`, `EnableSkipTimeWindow` |
 | Risk | `EnableDailyProfitTarget`, `DailyProfitTarget`, `EnableDailyLossLimit`, `DailyLossLimit` |

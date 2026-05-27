@@ -1,6 +1,6 @@
 # GodZuki — Signal Indicator
 
-**Version:** 1.0.3
+**Version:** 1.2
 **Namespace:** `NinjaTrader.NinjaScript.Indicators.GreyBeard`
 
 GodZuki is the pure indicator version of GodZillaKilla. It reads the same six GodZilla Suite sub-indicators, evaluates the same confluence logic, applies the same EMA filter — but executes no trades. Use it to visually monitor signals on any chart, audit historical signal quality, trigger audio alerts, and log signal history to CSV.
@@ -11,6 +11,8 @@ GodZuki is the pure indicator version of GodZillaKilla. It reads the same six Go
 
 | Version | Summary |
 |---|---|
+| **1.2** | Per-indicator **Require** flags added for both Set 1 and Set 2 (`RequireKOSignal`…`RequireNCSignal`, `G2_RequireKOSignal`…`G2_RequireNCSignal`). A required indicator must appear among the signals that fired in the trigger direction; meeting Required Count without it vetoes the trigger. All default to false. Debug print updated: `Signals=[...]` replaced with `Set1=[...]` and `Set2=[...]`; required indicators prefixed with `+`. |
+| 1.1 | Internal release. |
 | **1.0.3** | Indicator null diagnostic — one-time print at realtime with per-indicator load status. Signal reads hardened: outer null guards removed in favor of unified SafeSignalRead error handling across all six signals. |
 | 1.0.2 | Audio alert sound file properties now use NT8 file picker (browse for .wav). |
 | 1.0.1 | Fixed nested enum compile errors — `GodZukiSignalOperator`, `GodZukiHudCorner`, `GodZukiHudSize` moved to namespace level. Set 1 and Set 2 now draw independently on the same bar. Set 2 arrow offset increased (22 ticks vs Set 1 at 12 ticks). Group arrow labels changed from numeric suffix to `-S1` / `-S2`. |
@@ -46,6 +48,11 @@ Each of the six indicators exposes a `Signal_Trade` series. GodZuki reads `Signa
 
 ### Required Count
 With N indicators enabled and Required Count = R, the trigger fires when at least R signals agree in the same direction. Flat signals (0) do not count toward either side. If both long and short counts both reach R on the same bar, the conflict guard suppresses the trigger — no signal fires. Setting Required Count = N requires all enabled signals to agree.
+
+### Require Flags
+Each indicator in Set 1 and Set 2 has a **Require** flag (`Set 1 Require KingOrderBlock`, `Set 2 Require PANAKanal`, etc.). All default to `false`.
+
+When enabled, that indicator must be one of the signals that actually fired in the trigger direction. Meeting Required Count without it vetoes the trigger. Multiple indicators may be required simultaneously — all must be present in the agreeing set.
 
 ### EMA Filter
 Optional short/long EMA filter. When enabled, signals that conflict with the EMA direction are suppressed from visuals, arrows, audio, and the Set1/Set2 output plots. Individual sub-indicator signal values (KO–NC) in the Data Box reflect pre-filter raw values so near-misses remain visible.
@@ -85,7 +92,7 @@ When either Set 1 or Set 2 fires, the bar background is highlighted with a confi
 The SharpDX overlay panel shows four fixed rows:
 
 ```
-GodZuki  v1.0.3
+GodZuki  v1.2
 ─────────────────────────────────────
 EMA: ON   21=19843.50 / 50=19856.25    ← green=bullish, red=bearish, dim=off
 Set1: ON   Req:2/3                      ← white=active, dim=off
@@ -196,7 +203,7 @@ DateTime,Instrument,Set1,Set2,EMA,KO,PA,TH,SJ,SU,NC
 Enable `EnableDebug = true` to see Output window diagnostics:
 
 ```
-[GodZuki] DataLoaded | Instr=NQ 06-26 | Signals=[PA,TH,SJ] | Set1Req=2 | Set2=OFF | EMA=ON (21/50) | Log=ON
+[GodZuki] DataLoaded | Instr=NQ 06-26 | Set1=[PA,+TH,SJ] | Set2=OFF | Set1Req=2 | EMA=ON (21/50) | Log=ON
 [GodZuki] CSV log opened | Acct=Sim101 | C:\...\GodZuki_Sim101_20260517_143022.csv
 [GodZuki] Bar=1842 09:14:00 | KO=0 PA=1 TH=1 SJ=0 SU=0 NC=0
 [GodZuki] Bar=1842 | Set1=LONG[PA+TH] OK | Set2=FLAT

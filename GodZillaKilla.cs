@@ -458,7 +458,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 Description = "GodZillaKilla — strategy using direct KingOrderBlock/PANAKanal/ThunderZilla/SuperJumpBoost/SumoPullback/NobleCloud child indicator signals.";
                 Name = "GodZillaKilla";
                 StrategyName = Name;
-                _strategyVersion = "1.7.2";
+                _strategyVersion = "1.7.3";
 
                 Author = "Playr101";
                 Credits = "GreyBeard, ninZa.co, RenkoKings, ES, rbro999";
@@ -519,21 +519,27 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 EnableSignalTracking = true;
                 GroupTriggerSet1RequiredCount = 1;
                 UseKOSignals = false;
+                RequireKOSignal = false;
                 KO_LongValue = 1;
                 KO_ShortValue = -1;
                 UsePASignals = true;
+                RequirePASignal = false;
                 PA_LongValue = 2;
                 PA_ShortValue = -2;
                 UseTHSignals = true;
+                RequireTHSignal = false;
                 TH_LongValue = 2;
                 TH_ShortValue = -2;
                 UseSJSignals = true;
+                RequireSJSignal = false;
                 SJ_LongValue = 1;
                 SJ_ShortValue = -1;
                 UseSUSignals = false;
+                RequireSUSignal = false;
                 SU_LongValue = 1;
                 SU_ShortValue = -1;
                 UseNCSignals = false;
+                RequireNCSignal = false;
                 NC_LongValue = 1;
                 NC_ShortValue = -1;
 
@@ -554,21 +560,27 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 EnableGroupTriggerSet2 = false;
                 GroupTriggerSet2RequiredCount = 3;
                 G2_UseKOSignals = false;
+                G2_RequireKOSignal = false;
                 G2_KO_LongValue = 1;
                 G2_KO_ShortValue = -1;
                 G2_UsePASignals = true;
+                G2_RequirePASignal = false;
                 G2_PA_LongValue = 3;
                 G2_PA_ShortValue = -3;
                 G2_UseTHSignals = true;
+                G2_RequireTHSignal = false;
                 G2_TH_LongValue = 3;
                 G2_TH_ShortValue = -3;
                 G2_UseSJSignals = true;
+                G2_RequireSJSignal = false;
                 G2_SJ_LongValue = 1;
                 G2_SJ_ShortValue = -1;
                 G2_UseSUSignals = false;
+                G2_RequireSUSignal = false;
                 G2_SU_LongValue = 1;
                 G2_SU_ShortValue = -1;
                 G2_UseNCSignals = false;
+                G2_RequireNCSignal = false;
                 G2_NC_LongOperator = SignalComparisonOperator.Equal;
                 G2_NC_LongValue = 1;
                 G2_NC_ShortOperator = SignalComparisonOperator.Equal;
@@ -3358,7 +3370,22 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             if (longAgree >= needed && shortAgree >= needed)
                 return result;
 
-            if (longAgree >= needed)
+            // Required signal veto: a required indicator must be among the agreeing signals.
+            bool longRequiredMet  = (!UseKOSignals || !RequireKOSignal || koLong)
+                                 && (!UsePASignals || !RequirePASignal || paLong)
+                                 && (!UseTHSignals || !RequireTHSignal || thLong)
+                                 && (!UseSJSignals || !RequireSJSignal || sjLong)
+                                 && (!UseSUSignals || !RequireSUSignal || suLong)
+                                 && (!UseNCSignals || !RequireNCSignal || ncLong);
+
+            bool shortRequiredMet = (!UseKOSignals || !RequireKOSignal || koShort)
+                                 && (!UsePASignals || !RequirePASignal || paShort)
+                                 && (!UseTHSignals || !RequireTHSignal || thShort)
+                                 && (!UseSJSignals || !RequireSJSignal || sjShort)
+                                 && (!UseSUSignals || !RequireSUSignal || suShort)
+                                 && (!UseNCSignals || !RequireNCSignal || ncShort);
+
+            if (longAgree >= needed && longRequiredMet)
             {
                 result.Long = true;
                 result.GroupSize = needed;
@@ -3371,7 +3398,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 result.UsesSU = UseSUSignals && suLong;
                 result.UsesNC = UseNCSignals && ncLong;
             }
-            else if (shortAgree >= needed)
+            else if (shortAgree >= needed && shortRequiredMet)
             {
                 result.Short = true;
                 result.GroupSize = needed;
@@ -3476,7 +3503,22 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             if (longAgree >= needed && shortAgree >= needed)
                 return result;
 
-            if (longAgree >= needed)
+            // Required signal veto: a required indicator must be among the agreeing signals.
+            bool longRequiredMet  = (!G2_UseKOSignals || !G2_RequireKOSignal || koSignal > 0)
+                                 && (!G2_UsePASignals || !G2_RequirePASignal || paSignal > 0)
+                                 && (!G2_UseTHSignals || !G2_RequireTHSignal || thSignal > 0)
+                                 && (!G2_UseSJSignals || !G2_RequireSJSignal || sjSignal > 0)
+                                 && (!G2_UseSUSignals || !G2_RequireSUSignal || suSignal > 0)
+                                 && (!G2_UseNCSignals || !G2_RequireNCSignal || ncSignal > 0);
+
+            bool shortRequiredMet = (!G2_UseKOSignals || !G2_RequireKOSignal || koSignal < 0)
+                                 && (!G2_UsePASignals || !G2_RequirePASignal || paSignal < 0)
+                                 && (!G2_UseTHSignals || !G2_RequireTHSignal || thSignal < 0)
+                                 && (!G2_UseSJSignals || !G2_RequireSJSignal || sjSignal < 0)
+                                 && (!G2_UseSUSignals || !G2_RequireSUSignal || suSignal < 0)
+                                 && (!G2_UseNCSignals || !G2_RequireNCSignal || ncSignal < 0);
+
+            if (longAgree >= needed && longRequiredMet)
             {
                 result.Long = true;
                 result.GroupSize = needed;
@@ -3489,7 +3531,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 result.UsesSU = G2_UseSUSignals && suSignal > 0;
                 result.UsesNC = G2_UseNCSignals && ncSignal > 0;
             }
-            else if (shortAgree >= needed)
+            else if (shortAgree >= needed && shortRequiredMet)
             {
                 result.Short = true;
                 result.GroupSize = needed;
@@ -3803,23 +3845,33 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             bool suEnabledAnywhere = UseSUSignals || (EnableGroupTriggerSet2 && G2_UseSUSignals);
             bool ncEnabledAnywhere = UseNCSignals || (EnableGroupTriggerSet2 && G2_UseNCSignals);
 
-            // 1. Always show total unique indicator signals enabled across Set 1 + active Set 2.
-            if (koEnabledAnywhere)
-                enabledSignals.Add ("KO");
-            if (paEnabledAnywhere)
-                enabledSignals.Add ("PA");
-            if (thEnabledAnywhere)
-                enabledSignals.Add ("TH");
-            if (sjEnabledAnywhere)
-                enabledSignals.Add ("SJ");
-            if (suEnabledAnywhere)
-                enabledSignals.Add ("SU");
-            if (ncEnabledAnywhere)
-                enabledSignals.Add ("NC");
+            // 1. Set 1 enabled signals (+ prefix marks required indicators).
+            if (UseKOSignals) enabledSignals.Add ((RequireKOSignal ? "+" : "") + "KO");
+            if (UsePASignals) enabledSignals.Add ((RequirePASignal ? "+" : "") + "PA");
+            if (UseTHSignals) enabledSignals.Add ((RequireTHSignal ? "+" : "") + "TH");
+            if (UseSJSignals) enabledSignals.Add ((RequireSJSignal ? "+" : "") + "SJ");
+            if (UseSUSignals) enabledSignals.Add ((RequireSUSignal ? "+" : "") + "SU");
+            if (UseNCSignals) enabledSignals.Add ((RequireNCSignal ? "+" : "") + "NC");
 
             lines.Add (enabledSignals.Count > 0
-                ? "Enabled Signals: " + string.Join (", ", enabledSignals)
-                : "Enabled Signals: None");
+                ? "Set1 Enabled: " + string.Join (", ", enabledSignals)
+                : "Set1 Enabled: None");
+
+            // Set 2 enabled signals (only shown when Set 2 is active).
+            if (EnableGroupTriggerSet2)
+            {
+                List<string> set2Signals = new List<string> ();
+                if (G2_UseKOSignals) set2Signals.Add ((G2_RequireKOSignal ? "+" : "") + "KO");
+                if (G2_UsePASignals) set2Signals.Add ((G2_RequirePASignal ? "+" : "") + "PA");
+                if (G2_UseTHSignals) set2Signals.Add ((G2_RequireTHSignal ? "+" : "") + "TH");
+                if (G2_UseSJSignals) set2Signals.Add ((G2_RequireSJSignal ? "+" : "") + "SJ");
+                if (G2_UseSUSignals) set2Signals.Add ((G2_RequireSUSignal ? "+" : "") + "SU");
+                if (G2_UseNCSignals) set2Signals.Add ((G2_RequireNCSignal ? "+" : "") + "NC");
+
+                lines.Add (set2Signals.Count > 0
+                    ? "Set2 Enabled: " + string.Join (", ", set2Signals)
+                    : "Set2 Enabled: None");
+            }
 
             // 2. Individual Signal Stats (Show/Hide Toggle)
             if (ShowIndividualSignalStats)
@@ -7027,6 +7079,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             if (!UseKOSignals)
             {
                 RemoveProperties (col,
+                    "RequireKOSignal",
                     "KO_LongOperator",
                     "KO_LongValue",
                     "KO_ShortOperator",
@@ -7048,6 +7101,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             if (!UsePASignals)
             {
                 RemoveProperties (col,
+                    "RequirePASignal",
                     "PA_LongOperator",
                     "PA_LongValue",
                     "PA_ShortOperator",
@@ -7069,6 +7123,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             if (!UseTHSignals)
             {
                 RemoveProperties (col,
+                    "RequireTHSignal",
                     "TH_LongOperator",
                     "TH_LongValue",
                     "TH_ShortOperator",
@@ -7090,6 +7145,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             if (!UseSJSignals)
             {
                 RemoveProperties (col,
+                    "RequireSJSignal",
                     "SJ_LongOperator",
                     "SJ_LongValue",
                     "SJ_ShortOperator",
@@ -7111,6 +7167,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             if (!UseSUSignals)
             {
                 RemoveProperties (col,
+                    "RequireSUSignal",
                     "SU_LongOperator",
                     "SU_LongValue",
                     "SU_ShortOperator",
@@ -7132,6 +7189,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             if (!UseNCSignals)
             {
                 RemoveProperties (col,
+                    "RequireNCSignal",
                     "NC_LongOperator",
                     "NC_LongValue",
                     "NC_ShortOperator",
@@ -7354,36 +7412,42 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     "GroupTriggerSet2RequiredCount",
 
                     "G2_UseKOSignals",
+                    "G2_RequireKOSignal",
                     "G2_KO_LongOperator",
                     "G2_KO_LongValue",
                     "G2_KO_ShortOperator",
                     "G2_KO_ShortValue",
 
                     "G2_UsePASignals",
+                    "G2_RequirePASignal",
                     "G2_PA_LongOperator",
                     "G2_PA_LongValue",
                     "G2_PA_ShortOperator",
                     "G2_PA_ShortValue",
 
                     "G2_UseTHSignals",
+                    "G2_RequireTHSignal",
                     "G2_TH_LongOperator",
                     "G2_TH_LongValue",
                     "G2_TH_ShortOperator",
                     "G2_TH_ShortValue",
 
                     "G2_UseSJSignals",
+                    "G2_RequireSJSignal",
                     "G2_SJ_LongOperator",
                     "G2_SJ_LongValue",
                     "G2_SJ_ShortOperator",
                     "G2_SJ_ShortValue",
 
                     "G2_UseSUSignals",
+                    "G2_RequireSUSignal",
                     "G2_SU_LongOperator",
                     "G2_SU_LongValue",
                     "G2_SU_ShortOperator",
                     "G2_SU_ShortValue",
 
                     "G2_UseNCSignals",
+                    "G2_RequireNCSignal",
                     "G2_NC_LongOperator",
                     "G2_NC_LongValue",
                     "G2_NC_ShortOperator",
@@ -7392,22 +7456,22 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             else
             {
                 if (!G2_UseKOSignals)
-                    RemoveProperties (col, "G2_KO_LongOperator", "G2_KO_LongValue", "G2_KO_ShortOperator", "G2_KO_ShortValue");
+                    RemoveProperties (col, "G2_RequireKOSignal", "G2_KO_LongOperator", "G2_KO_LongValue", "G2_KO_ShortOperator", "G2_KO_ShortValue");
 
                 if (!G2_UsePASignals)
-                    RemoveProperties (col, "G2_PA_LongOperator", "G2_PA_LongValue", "G2_PA_ShortOperator", "G2_PA_ShortValue");
+                    RemoveProperties (col, "G2_RequirePASignal", "G2_PA_LongOperator", "G2_PA_LongValue", "G2_PA_ShortOperator", "G2_PA_ShortValue");
 
                 if (!G2_UseTHSignals)
-                    RemoveProperties (col, "G2_TH_LongOperator", "G2_TH_LongValue", "G2_TH_ShortOperator", "G2_TH_ShortValue");
+                    RemoveProperties (col, "G2_RequireTHSignal", "G2_TH_LongOperator", "G2_TH_LongValue", "G2_TH_ShortOperator", "G2_TH_ShortValue");
 
                 if (!G2_UseSJSignals)
-                    RemoveProperties (col, "G2_SJ_LongOperator", "G2_SJ_LongValue", "G2_SJ_ShortOperator", "G2_SJ_ShortValue");
+                    RemoveProperties (col, "G2_RequireSJSignal", "G2_SJ_LongOperator", "G2_SJ_LongValue", "G2_SJ_ShortOperator", "G2_SJ_ShortValue");
 
                 if (!G2_UseSUSignals)
-                    RemoveProperties (col, "G2_SU_LongOperator", "G2_SU_LongValue", "G2_SU_ShortOperator", "G2_SU_ShortValue");
+                    RemoveProperties (col, "G2_RequireSUSignal", "G2_SU_LongOperator", "G2_SU_LongValue", "G2_SU_ShortOperator", "G2_SU_ShortValue");
 
                 if (!G2_UseNCSignals)
-                    RemoveProperties (col, "G2_NC_LongOperator", "G2_NC_LongValue", "G2_NC_ShortOperator", "G2_NC_ShortValue");
+                    RemoveProperties (col, "G2_RequireNCSignal", "G2_NC_LongOperator", "G2_NC_LongValue", "G2_NC_ShortOperator", "G2_NC_ShortValue");
             }
 
             bool anyVisibleGroupEnabled = IsPrimaryGroupModeActive () || IsSecondaryGroupModeActive ();
@@ -7686,7 +7750,15 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 KingOrderBlock Long Operator", Order = 21, GroupName = "Signals",
+        [Display (Name = "Set 1 Require KingOrderBlock", Order = 21, GroupName = "Signals",
+            Description = "When enabled, KingOrderBlock must be among the agreeing signals for Set 1 to trigger. Has no effect when Use KingOrderBlock is disabled.")]
+        public bool RequireKOSignal
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Set 1 KingOrderBlock Long Operator", Order = 22, GroupName = "Signals",
             Description = "Comparison operator used against the KingOrderBlock long value.")]
         public SignalComparisonOperator KO_LongOperator
         {
@@ -7694,7 +7766,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 KingOrderBlock Long Value", Order = 22, GroupName = "Signals",
+        [Display (Name = "Set 1 KingOrderBlock Long Value", Order = 23, GroupName = "Signals",
             Description = "Bullish comparison value. Valid examples: 1 = Return Bullish, 2 = Breakout Bullish.")]
         public int KO_LongValue
         {
@@ -7702,7 +7774,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 KingOrderBlock Short Operator", Order = 23, GroupName = "Signals",
+        [Display (Name = "Set 1 KingOrderBlock Short Operator", Order = 24, GroupName = "Signals",
             Description = "Comparison operator used against the KingOrderBlock short value.")]
         public SignalComparisonOperator KO_ShortOperator
         {
@@ -7710,7 +7782,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 KingOrderBlock Short Value", Order = 24, GroupName = "Signals",
+        [Display (Name = "Set 1 KingOrderBlock Short Value", Order = 25, GroupName = "Signals",
             Description = "Bearish comparison value. Valid examples: -1 = Return Bearish, -2 = Breakout Bearish.")]
         public int KO_ShortValue
         {
@@ -7728,7 +7800,15 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 PANAKanal Long Operator", Order = 31, GroupName = "Signals",
+        [Display (Name = "Set 1 Require PANAKanal", Order = 31, GroupName = "Signals",
+            Description = "When enabled, PANAKanal must be among the agreeing signals for Set 1 to trigger. Has no effect when Use PANAKanal is disabled.")]
+        public bool RequirePASignal
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Set 1 PANAKanal Long Operator", Order = 32, GroupName = "Signals",
             Description = "Comparison operator used against the PANAKanal long value.")]
         public SignalComparisonOperator PA_LongOperator
         {
@@ -7736,7 +7816,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 PANAKanal Long Value", Order = 32, GroupName = "Signals",
+        [Display (Name = "Set 1 PANAKanal Long Value", Order = 33, GroupName = "Signals",
             Description = "Bullish comparison value. Valid examples: 1 = Trend Start Up, 2 = Break Up, 3 = Pullback Bullish.")]
         public int PA_LongValue
         {
@@ -7744,7 +7824,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 PANAKanal Short Operator", Order = 33, GroupName = "Signals",
+        [Display (Name = "Set 1 PANAKanal Short Operator", Order = 34, GroupName = "Signals",
             Description = "Comparison operator used against the PANAKanal short value.")]
         public SignalComparisonOperator PA_ShortOperator
         {
@@ -7752,7 +7832,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 PANAKanal Short Value", Order = 34, GroupName = "Signals",
+        [Display (Name = "Set 1 PANAKanal Short Value", Order = 35, GroupName = "Signals",
             Description = "Bearish comparison value. Valid examples: -1 = Trend Start Down, -2 = Break Down, -3 = Pullback Bearish.")]
         public int PA_ShortValue
         {
@@ -7770,7 +7850,15 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 ThunderZilla Long Operator", Order = 41, GroupName = "Signals",
+        [Display (Name = "Set 1 Require ThunderZilla", Order = 41, GroupName = "Signals",
+            Description = "When enabled, ThunderZilla must be among the agreeing signals for Set 1 to trigger. Has no effect when Use ThunderZilla is disabled.")]
+        public bool RequireTHSignal
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Set 1 ThunderZilla Long Operator", Order = 42, GroupName = "Signals",
             Description = "Comparison operator used against the ThunderZilla long value.")]
         public SignalComparisonOperator TH_LongOperator
         {
@@ -7778,7 +7866,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 ThunderZilla Long Value", Order = 42, GroupName = "Signals",
+        [Display (Name = "Set 1 ThunderZilla Long Value", Order = 43, GroupName = "Signals",
             Description = "Bullish comparison value. Valid: 1 = Uptrend Start, 2 = Downtrend Slowdown, 3 = Uptrend Pullback, 4 = Move Stop Up.")]
         public int TH_LongValue
         {
@@ -7786,7 +7874,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 ThunderZilla Short Operator", Order = 43, GroupName = "Signals",
+        [Display (Name = "Set 1 ThunderZilla Short Operator", Order = 44, GroupName = "Signals",
             Description = "Comparison operator used against the ThunderZilla short value.")]
         public SignalComparisonOperator TH_ShortOperator
         {
@@ -7794,7 +7882,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 ThunderZilla Short Value", Order = 44, GroupName = "Signals",
+        [Display (Name = "Set 1 ThunderZilla Short Value", Order = 45, GroupName = "Signals",
             Description = "Bearish comparison value. Valid: -1 = Downtrend Start, -2 = Uptrend Slowdown, -3 = Downtrend Pullback, -4 = Move Stop Down.")]
         public int TH_ShortValue
         {
@@ -7812,7 +7900,15 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 SuperJumpBoost Long Operator", Order = 51, GroupName = "Signals",
+        [Display (Name = "Set 1 Require SuperJumpBoost", Order = 51, GroupName = "Signals",
+            Description = "When enabled, SuperJumpBoost must be among the agreeing signals for Set 1 to trigger. Has no effect when Use SuperJumpBoost is disabled.")]
+        public bool RequireSJSignal
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Set 1 SuperJumpBoost Long Operator", Order = 52, GroupName = "Signals",
             Description = "Comparison operator used against the SuperJumpBoost long value.")]
         public SignalComparisonOperator SJ_LongOperator
         {
@@ -7820,7 +7916,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 SuperJumpBoost Long Value", Order = 52, GroupName = "Signals",
+        [Display (Name = "Set 1 SuperJumpBoost Long Value", Order = 53, GroupName = "Signals",
             Description = "Bullish comparison value. Valid examples: 1 = Bullish Return, 2 = Bullish Zone Start.")]
         public int SJ_LongValue
         {
@@ -7828,7 +7924,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 SuperJumpBoost Short Operator", Order = 53, GroupName = "Signals",
+        [Display (Name = "Set 1 SuperJumpBoost Short Operator", Order = 54, GroupName = "Signals",
             Description = "Comparison operator used against the SuperJumpBoost short value.")]
         public SignalComparisonOperator SJ_ShortOperator
         {
@@ -7836,7 +7932,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 SuperJumpBoost Short Value", Order = 54, GroupName = "Signals",
+        [Display (Name = "Set 1 SuperJumpBoost Short Value", Order = 55, GroupName = "Signals",
             Description = "Bearish comparison value. Valid examples: -1 = Bearish Return, -2 = Bearish Zone Start.")]
         public int SJ_ShortValue
         {
@@ -7854,7 +7950,15 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 SumoPullback Long Operator", Order = 61, GroupName = "Signals",
+        [Display (Name = "Set 1 Require SumoPullback", Order = 61, GroupName = "Signals",
+            Description = "When enabled, SumoPullback must be among the agreeing signals for Set 1 to trigger. Has no effect when Use SumoPullback is disabled.")]
+        public bool RequireSUSignal
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Set 1 SumoPullback Long Operator", Order = 62, GroupName = "Signals",
             Description = "Comparison operator used against the SumoPullback long value.")]
         public SignalComparisonOperator SU_LongOperator
         {
@@ -7862,7 +7966,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 SumoPullback Long Value", Order = 62, GroupName = "Signals",
+        [Display (Name = "Set 1 SumoPullback Long Value", Order = 63, GroupName = "Signals",
             Description = "Bullish comparison value. Valid example: 1 = Bullish Sumo.")]
         public int SU_LongValue
         {
@@ -7870,7 +7974,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 SumoPullback Short Operator", Order = 63, GroupName = "Signals",
+        [Display (Name = "Set 1 SumoPullback Short Operator", Order = 64, GroupName = "Signals",
             Description = "Comparison operator used against the SumoPullback short value.")]
         public SignalComparisonOperator SU_ShortOperator
         {
@@ -7878,7 +7982,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 SumoPullback Short Value", Order = 64, GroupName = "Signals",
+        [Display (Name = "Set 1 SumoPullback Short Value", Order = 65, GroupName = "Signals",
             Description = "Bearish comparison value. Valid example: -1 = Bearish Sumo.")]
         public int SU_ShortValue
         {
@@ -7896,14 +8000,22 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 NobleCloud Long Operator", Order = 71, GroupName = "Signals")]
+        [Display (Name = "Set 1 Require NobleCloud", Order = 71, GroupName = "Signals",
+            Description = "When enabled, NobleCloud must be among the agreeing signals for Set 1 to trigger. Has no effect when Use NobleCloud is disabled.")]
+        public bool RequireNCSignal
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Set 1 NobleCloud Long Operator", Order = 72, GroupName = "Signals")]
         public SignalComparisonOperator NC_LongOperator
         {
             get; set;
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 NobleCloud Long Value", Order = 72, GroupName = "Signals",
+        [Display (Name = "Set 1 NobleCloud Long Value", Order = 73, GroupName = "Signals",
             Description = "Bullish threshold. Recommended: 1 (only valid value for NobleCloud).")]
         public int NC_LongValue
         {
@@ -7911,14 +8023,14 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 NobleCloud Short Operator", Order = 73, GroupName = "Signals")]
+        [Display (Name = "Set 1 NobleCloud Short Operator", Order = 74, GroupName = "Signals")]
         public SignalComparisonOperator NC_ShortOperator
         {
             get; set;
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 1 NobleCloud Short Value", Order = 74, GroupName = "Signals",
+        [Display (Name = "Set 1 NobleCloud Short Value", Order = 75, GroupName = "Signals",
             Description = "Bearish threshold. Recommended: -1 (only valid value for NobleCloud).")]
         public int NC_ShortValue
         {
@@ -7954,28 +8066,36 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 KingOrderBlock Long Operator", Order = 111, GroupName = "Signals")]
+        [Display (Name = "Set 2 Require KingOrderBlock", Order = 111, GroupName = "Signals",
+            Description = "When enabled, KingOrderBlock must be among the agreeing signals for Set 2 to trigger.")]
+        public bool G2_RequireKOSignal
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Set 2 KingOrderBlock Long Operator", Order = 112, GroupName = "Signals")]
         public SignalComparisonOperator G2_KO_LongOperator
         {
             get; set;
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 KingOrderBlock Long Value", Order = 112, GroupName = "Signals")]
+        [Display (Name = "Set 2 KingOrderBlock Long Value", Order = 113, GroupName = "Signals")]
         public int G2_KO_LongValue
         {
             get; set;
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 KingOrderBlock Short Operator", Order = 113, GroupName = "Signals")]
+        [Display (Name = "Set 2 KingOrderBlock Short Operator", Order = 114, GroupName = "Signals")]
         public SignalComparisonOperator G2_KO_ShortOperator
         {
             get; set;
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 KingOrderBlock Short Value", Order = 114, GroupName = "Signals")]
+        [Display (Name = "Set 2 KingOrderBlock Short Value", Order = 115, GroupName = "Signals")]
         public int G2_KO_ShortValue
         {
             get; set;
@@ -7991,28 +8111,36 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 PANAKanal Long Operator", Order = 121, GroupName = "Signals")]
+        [Display (Name = "Set 2 Require PANAKanal", Order = 121, GroupName = "Signals",
+            Description = "When enabled, PANAKanal must be among the agreeing signals for Set 2 to trigger.")]
+        public bool G2_RequirePASignal
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Set 2 PANAKanal Long Operator", Order = 122, GroupName = "Signals")]
         public SignalComparisonOperator G2_PA_LongOperator
         {
             get; set;
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 PANAKanal Long Value", Order = 122, GroupName = "Signals")]
+        [Display (Name = "Set 2 PANAKanal Long Value", Order = 123, GroupName = "Signals")]
         public int G2_PA_LongValue
         {
             get; set;
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 PANAKanal Short Operator", Order = 123, GroupName = "Signals")]
+        [Display (Name = "Set 2 PANAKanal Short Operator", Order = 124, GroupName = "Signals")]
         public SignalComparisonOperator G2_PA_ShortOperator
         {
             get; set;
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 PANAKanal Short Value", Order = 124, GroupName = "Signals")]
+        [Display (Name = "Set 2 PANAKanal Short Value", Order = 125, GroupName = "Signals")]
         public int G2_PA_ShortValue
         {
             get; set;
@@ -8028,28 +8156,36 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 ThunderZilla Long Operator", Order = 131, GroupName = "Signals")]
+        [Display (Name = "Set 2 Require ThunderZilla", Order = 131, GroupName = "Signals",
+            Description = "When enabled, ThunderZilla must be among the agreeing signals for Set 2 to trigger.")]
+        public bool G2_RequireTHSignal
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Set 2 ThunderZilla Long Operator", Order = 132, GroupName = "Signals")]
         public SignalComparisonOperator G2_TH_LongOperator
         {
             get; set;
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 ThunderZilla Long Value", Order = 132, GroupName = "Signals")]
+        [Display (Name = "Set 2 ThunderZilla Long Value", Order = 133, GroupName = "Signals")]
         public int G2_TH_LongValue
         {
             get; set;
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 ThunderZilla Short Operator", Order = 133, GroupName = "Signals")]
+        [Display (Name = "Set 2 ThunderZilla Short Operator", Order = 134, GroupName = "Signals")]
         public SignalComparisonOperator G2_TH_ShortOperator
         {
             get; set;
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 ThunderZilla Short Value", Order = 134, GroupName = "Signals")]
+        [Display (Name = "Set 2 ThunderZilla Short Value", Order = 135, GroupName = "Signals")]
         public int G2_TH_ShortValue
         {
             get; set;
@@ -8065,28 +8201,36 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 SuperJumpBoost Long Operator", Order = 141, GroupName = "Signals")]
+        [Display (Name = "Set 2 Require SuperJumpBoost", Order = 141, GroupName = "Signals",
+            Description = "When enabled, SuperJumpBoost must be among the agreeing signals for Set 2 to trigger.")]
+        public bool G2_RequireSJSignal
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Set 2 SuperJumpBoost Long Operator", Order = 142, GroupName = "Signals")]
         public SignalComparisonOperator G2_SJ_LongOperator
         {
             get; set;
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 SuperJumpBoost Long Value", Order = 142, GroupName = "Signals")]
+        [Display (Name = "Set 2 SuperJumpBoost Long Value", Order = 143, GroupName = "Signals")]
         public int G2_SJ_LongValue
         {
             get; set;
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 SuperJumpBoost Short Operator", Order = 143, GroupName = "Signals")]
+        [Display (Name = "Set 2 SuperJumpBoost Short Operator", Order = 144, GroupName = "Signals")]
         public SignalComparisonOperator G2_SJ_ShortOperator
         {
             get; set;
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 SuperJumpBoost Short Value", Order = 144, GroupName = "Signals")]
+        [Display (Name = "Set 2 SuperJumpBoost Short Value", Order = 145, GroupName = "Signals")]
         public int G2_SJ_ShortValue
         {
             get; set;
@@ -8102,28 +8246,36 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 SumoPullback Long Operator", Order = 151, GroupName = "Signals")]
+        [Display (Name = "Set 2 Require SumoPullback", Order = 151, GroupName = "Signals",
+            Description = "When enabled, SumoPullback must be among the agreeing signals for Set 2 to trigger.")]
+        public bool G2_RequireSUSignal
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Set 2 SumoPullback Long Operator", Order = 152, GroupName = "Signals")]
         public SignalComparisonOperator G2_SU_LongOperator
         {
             get; set;
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 SumoPullback Long Value", Order = 152, GroupName = "Signals")]
+        [Display (Name = "Set 2 SumoPullback Long Value", Order = 153, GroupName = "Signals")]
         public int G2_SU_LongValue
         {
             get; set;
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 SumoPullback Short Operator", Order = 153, GroupName = "Signals")]
+        [Display (Name = "Set 2 SumoPullback Short Operator", Order = 154, GroupName = "Signals")]
         public SignalComparisonOperator G2_SU_ShortOperator
         {
             get; set;
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 SumoPullback Short Value", Order = 154, GroupName = "Signals")]
+        [Display (Name = "Set 2 SumoPullback Short Value", Order = 155, GroupName = "Signals")]
         public int G2_SU_ShortValue
         {
             get; set;
@@ -8139,28 +8291,36 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 NobleCloud Long Operator", Order = 161, GroupName = "Signals")]
+        [Display (Name = "Set 2 Require NobleCloud", Order = 161, GroupName = "Signals",
+            Description = "When enabled, NobleCloud must be among the agreeing signals for Set 2 to trigger.")]
+        public bool G2_RequireNCSignal
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Set 2 NobleCloud Long Operator", Order = 162, GroupName = "Signals")]
         public SignalComparisonOperator G2_NC_LongOperator
         {
             get; set;
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 NobleCloud Long Value", Order = 162, GroupName = "Signals")]
+        [Display (Name = "Set 2 NobleCloud Long Value", Order = 163, GroupName = "Signals")]
         public int G2_NC_LongValue
         {
             get; set;
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 NobleCloud Short Operator", Order = 163, GroupName = "Signals")]
+        [Display (Name = "Set 2 NobleCloud Short Operator", Order = 164, GroupName = "Signals")]
         public SignalComparisonOperator G2_NC_ShortOperator
         {
             get; set;
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Set 2 NobleCloud Short Value", Order = 164, GroupName = "Signals")]
+        [Display (Name = "Set 2 NobleCloud Short Value", Order = 165, GroupName = "Signals")]
         public int G2_NC_ShortValue
         {
             get; set;
