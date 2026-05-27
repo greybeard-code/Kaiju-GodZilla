@@ -240,6 +240,8 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
         // Trade logging
         private StreamWriter _logWriter;
+        private bool   _logPendingOpen  = false;
+        private string _logSafeAccount  = string.Empty;
         // ConcurrentDictionary (was Dictionary) — _tradeMap is read AND written from
         // both the UI thread (OnBarUpdate/OnMarketData) and background threads
         // (SystemPerformance callbacks). Plain Dictionary is not thread-safe.
@@ -1024,7 +1026,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
                 if (LogEnabled)
                 {
-                    // Close any existing writer before opening a new one. Handles replay re-entry.
+                    // Close any existing writer before queuing a new one. Handles replay re-entry.
                     if (_logWriter != null)
                     {
                         _logWriter.Flush ();
@@ -1033,15 +1035,11 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     }
 
                     string accountName = (Account != null && !string.IsNullOrEmpty (Account.Name)) ? Account.Name : "NoAccount";
-                    string safeAccount = string.Concat (accountName.Split (System.IO.Path.GetInvalidFileNameChars ())).Replace (" ", "_");
-
-                    string logPath = Path.Combine(
-                        NinjaTrader.Core.Globals.UserDataDir,
-                        "GodZilla_" + safeAccount + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".csv");
-
-                    _logWriter = new StreamWriter (logPath, append: false, encoding: Encoding.UTF8);
-                    _logWriter.WriteLine ("OpenTime,Account,Instrument,OpenPrice,Qty,CloseTime,Trigger,Direction,AtmStrategyName,RealizedPnL,SignalCombo,UsedSignals,TradeResult,LastTradeLine");
-                    _logWriter.Flush ();
+                    _logSafeAccount = string.Concat (accountName.Split (System.IO.Path.GetInvalidFileNameChars ())).Replace (" ", "_");
+                    _logPendingOpen = true;
+                    // File is created lazily on first write (EnsureLogOpen) so Time[0] is
+                    // available — this gives the correct session date in replay/playback
+                    // instead of today's wall-clock date.
                 }
 
                 if (CurrentBar >= 0)
@@ -1118,6 +1116,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                         _logWriter.Dispose ();
                         _logWriter = null;
                     }
+                    _logPendingOpen = false;
                 }
                 catch { }
 
@@ -4180,8 +4179,37 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             return $"Last: {tradePnl:C} | {dir} | {sig}";
         }
 
+        private void EnsureLogOpen ()
+        {
+            if (!_logPendingOpen || !LogEnabled || CurrentBar < 0)
+                return;
+            try
+            {
+                string stamp   = Time[0].ToString ("yyyyMMdd_HHmmss");
+                string logPath = Path.Combine (
+                    NinjaTrader.Core.Globals.UserDataDir,
+                    "GodZilla_" + _logSafeAccount + "_" + stamp + ".csv");
+
+                _logWriter = new StreamWriter (logPath, append: false, encoding: Encoding.UTF8);
+                _logWriter.WriteLine ("OpenTime,Account,Instrument,OpenPrice,Qty,CloseTime,Trigger,Direction,AtmStrategyName,RealizedPnL,SignalCombo,UsedSignals,TradeResult,LastTradeLine");
+                _logWriter.Flush ();
+                _logPendingOpen = false;
+
+                if (EnableDebug)
+                    Print ($"[{Name}] CSV log opened | Acct={_logSafeAccount} | {logPath}");
+            }
+            catch (Exception ex)
+            {
+                _logPendingOpen = false;
+                if (EnableDebug)
+                    Print ($"[{Name}] CSV log open failed: {ex.Message}");
+            }
+        }
+
         private void WriteTradeLogRecord (string tradeKey, DateTime closeTime, double tradePnl)
         {
+            EnsureLogOpen ();
+
             if (_logWriter == null)
                 return;
 
