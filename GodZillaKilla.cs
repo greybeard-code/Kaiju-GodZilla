@@ -414,12 +414,22 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         // Button Panel
         private Border _controlPanel;
         private Button _armLongBtn, _armShortBtn, _revBtn, _autoArmBtn, _closeBtn;
-        private Label _statusLabel;
-        private bool _uiInitialized = false;
-        private bool _armLong = true;
-        private bool _armShort = true;
-        private bool _autoArm = true;
-        private bool _reverseOnAlternateSignal = true;
+        private Label  _statusLabel;
+        private Label  _panelAccountLabel;
+        private bool   _uiInitialized = false;
+        private bool   _armLong = true;
+        private bool   _armShort = true;
+        private bool   _autoArm = true;
+        private bool   _reverseOnAlternateSignal = true;
+
+        // Floating panel — drag and resize state
+        private int    _panelScaleIndex = 0;
+        private static readonly double[] PanelScales = { 1.0, 0.75, 0.5 };
+        private bool   _isPanelMinimized = false;
+        private bool   _isDraggingPanel  = false;
+        private System.Windows.Point _panelDragStartMouse;
+        private Border    _panelTitleBar;
+        private TextBlock _panelMinimizeArrow;
         private volatile bool _strategyEnabled = true;
         private bool _hudIsMasterActive;
 
@@ -458,7 +468,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 Description = "GodZillaKilla — strategy using direct KingOrderBlock/PANAKanal/ThunderZilla/SuperJumpBoost/SumoPullback/NobleCloud child indicator signals.";
                 Name = "GodZillaKilla";
                 StrategyName = Name;
-                _strategyVersion = "1.7.3";
+                _strategyVersion = "1.7.4";
 
                 Author = "Playr101";
                 Credits = "GreyBeard, ninZa.co, RenkoKings, ES, rbro999";
@@ -512,6 +522,8 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 DashboardSize = GodZillaHudSize.Normal;
                 ShowControlPanel = true;
                 ControlPanelPosition = HudCorner.TopLeft;
+                PanelLeft = 10.0;
+                PanelTop  = 50.0;
 
                 ShowIndividualSignalStats = false;     // Default to Hidden
                 ShowGroupSignalTrackingStats = true;
@@ -6617,94 +6629,100 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     if (_uiInitialized)
                         return;
 
-                    _controlPanel = new Border
+                    // ── Title bar (drag handle + minimize) ────────────────
+                    _panelMinimizeArrow = new TextBlock
                     {
-                        Background = new SolidColorBrush (Color.FromArgb (220, 20, 20, 35)),
-                        BorderBrush = Brushes.DodgerBlue,
-                        BorderThickness = new Thickness (2),
-                        CornerRadius = new CornerRadius (5),
-                        Padding = new Thickness (10),
-                        Margin = new Thickness (10, 10, 10, 10)
+                        Text              = "▼",
+                        Foreground        = Brushes.Cyan,
+                        FontSize          = 10,
+                        FontWeight        = FontWeights.Bold,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Cursor            = System.Windows.Input.Cursors.Hand,
+                        Margin            = new Thickness (0, 0, 6, 0)
+                    };
+                    _panelMinimizeArrow.MouseLeftButtonDown += (s, ev) => ev.Handled = true;
+                    _panelMinimizeArrow.MouseLeftButtonUp   += OnPanelMinimizeClick;
+
+                    var titleText = new TextBlock
+                    {
+                        Text                = "⚡ GodZilla Killa ⚡",
+                        Foreground          = Brushes.Cyan,
+                        FontWeight          = FontWeights.Bold,
+                        FontSize            = 13,
+                        VerticalAlignment   = VerticalAlignment.Center,
+                        HorizontalAlignment = HorizontalAlignment.Center
                     };
 
-                    switch (ControlPanelPosition)
+                    var titleGrid = new Grid ();
+                    titleGrid.ColumnDefinitions.Add (new ColumnDefinition { Width = GridLength.Auto });
+                    titleGrid.ColumnDefinitions.Add (new ColumnDefinition { Width = new GridLength (1, GridUnitType.Star) });
+                    Grid.SetColumn (_panelMinimizeArrow, 0);
+                    Grid.SetColumn (titleText, 1);
+                    titleGrid.Children.Add (_panelMinimizeArrow);
+                    titleGrid.Children.Add (titleText);
+
+                    _panelTitleBar = new Border
                     {
-                        case HudCorner.TopRight:
-                            _controlPanel.HorizontalAlignment = HorizontalAlignment.Right;
-                            _controlPanel.VerticalAlignment = VerticalAlignment.Top;
-                            break;
+                        Background      = new SolidColorBrush (Color.FromArgb (60, 0, 150, 255)),
+                        CornerRadius    = new CornerRadius (3),
+                        Padding         = new Thickness (6, 4, 6, 4),
+                        Margin          = new Thickness (0, 0, 0, 4),
+                        Cursor          = System.Windows.Input.Cursors.SizeAll,
+                        Child           = titleGrid,
+                        ToolTip         = "Drag to move  •  Double-click to resize (Normal → Small → Tiny)"
+                    };
+                    _panelTitleBar.MouseLeftButtonDown += OnPanelTitleMouseDown;
+                    _panelTitleBar.MouseMove           += OnPanelTitleMouseMove;
+                    _panelTitleBar.MouseLeftButtonUp   += OnPanelTitleMouseUp;
 
-                        case HudCorner.BottomLeft:
-                            _controlPanel.HorizontalAlignment = HorizontalAlignment.Left;
-                            _controlPanel.VerticalAlignment = VerticalAlignment.Bottom;
-                            break;
+                    // ── Info lines ─────────────────────────────────────────
+                    string instrName = (Instrument != null && Instrument.MasterInstrument != null)
+                        ? Instrument.MasterInstrument.Name : "Unknown";
+                    string acctName  = Account?.Name ?? "Unknown";
 
-                        case HudCorner.BottomRight:
-                            _controlPanel.HorizontalAlignment = HorizontalAlignment.Right;
-                            _controlPanel.VerticalAlignment = VerticalAlignment.Bottom;
-                            break;
-
-                        case HudCorner.Center:
-                            _controlPanel.HorizontalAlignment = HorizontalAlignment.Center;
-                            _controlPanel.VerticalAlignment = VerticalAlignment.Center;
-                            break;
-
-                        default:
-                            _controlPanel.HorizontalAlignment = HorizontalAlignment.Left;
-                            _controlPanel.VerticalAlignment = VerticalAlignment.Top;
-                            break;
-                    }
-
-                    StackPanel main = new StackPanel { Orientation = Orientation.Vertical };
-
-                    main.Children.Add (new TextBlock
+                    var instrLabel = new TextBlock
                     {
-                        Text = "⚡ GodZilla Killa ⚡",
-                        Foreground = Brushes.Cyan,
-                        FontWeight = FontWeights.Bold,
-                        FontSize = 14,
-                        TextAlignment = TextAlignment.Center,
+                        Text                = "Instrument: " + instrName,
+                        Foreground          = Brushes.DeepSkyBlue,
+                        FontWeight          = FontWeights.Bold,
+                        FontSize            = 11,
+                        TextAlignment       = TextAlignment.Center,
                         HorizontalAlignment = HorizontalAlignment.Center,
-                        Margin = new Thickness (0, 0, 0, 0)
-                    });
+                        Margin              = new Thickness (0, 0, 0, 2)
+                    };
 
-                    main.Children.Add (new TextBlock
+                    _panelAccountLabel = new Label
                     {
-                        Text = "Instrument -- " + ((Instrument != null && Instrument.MasterInstrument != null) ? Instrument.MasterInstrument.Name : "Unknown"),
-                        Foreground = Brushes.DeepSkyBlue,
-                        FontWeight = FontWeights.Bold,
-                        FontSize = 12,
-                        TextAlignment = TextAlignment.Center,
-                        HorizontalAlignment = HorizontalAlignment.Center,
-                        Margin = new Thickness (0, 0, 0, 4)
-                    });
+                        Content                    = "Account: " + acctName,
+                        Foreground                 = Brushes.LightSteelBlue,
+                        FontSize                   = 11,
+                        Padding                    = new Thickness (0),
+                        Margin                     = new Thickness (0, 0, 0, 4),
+                        HorizontalContentAlignment = HorizontalAlignment.Center
+                    };
 
                     _statusLabel = new Label
                     {
-                        Content = "Initializing...",
-                        Foreground = Brushes.Yellow,
-                        FontSize = 11,
-                        Padding = new Thickness (0),
-                        Margin = new Thickness (0, 0, 0, 4),
+                        Content                    = "Initializing...",
+                        Foreground                 = Brushes.Yellow,
+                        FontSize                   = 11,
+                        Padding                    = new Thickness (0),
+                        Margin                     = new Thickness (0, 0, 0, 4),
                         HorizontalContentAlignment = HorizontalAlignment.Center
                     };
-                    main.Children.Add (_statusLabel);
 
-                    StackPanel btnRow = new StackPanel
+                    // ── Buttons ────────────────────────────────────────────
+                    var btnRow = new StackPanel
                     {
-                        Orientation = Orientation.Horizontal,
-                        HorizontalAlignment = HorizontalAlignment.Center,
-                        Margin = new Thickness (0, 0, 0, 0)
+                        Orientation         = Orientation.Horizontal,
+                        HorizontalAlignment = HorizontalAlignment.Center
                     };
 
                     _armLongBtn = new Button
                     {
-                        Content = "ARM LONG",
-                        Width = 150,
-                        Height = 30,
+                        Content = "ARM LONG", Width = 148, Height = 30,
                         Margin = new Thickness (2),
-                        Background = Brushes.DarkGreen,
-                        Foreground = Brushes.White,
+                        Background = Brushes.DarkGreen, Foreground = Brushes.White,
                         FontWeight = FontWeights.Bold,
                         HorizontalContentAlignment = HorizontalAlignment.Center
                     };
@@ -6713,63 +6731,79 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
                     _armShortBtn = new Button
                     {
-                        Content = "ARM SHORT",
-                        Width = 150,
-                        Height = 30,
+                        Content = "ARM SHORT", Width = 148, Height = 30,
                         Margin = new Thickness (2),
-                        Background = Brushes.DarkRed,
-                        Foreground = Brushes.White,
+                        Background = Brushes.DarkRed, Foreground = Brushes.White,
                         FontWeight = FontWeights.Bold,
                         HorizontalContentAlignment = HorizontalAlignment.Center
                     };
                     _armShortBtn.Click += ArmShortBtn_Click;
                     btnRow.Children.Add (_armShortBtn);
 
-                    main.Children.Add (btnRow);
-
                     _revBtn = new Button
                     {
-                        Content = "REV: ON",
-                        Width = 304,
-                        Height = 30,
+                        Content = "REV: ON", Width = 300, Height = 30,
                         Margin = new Thickness (2, 4, 2, 0),
-                        Background = Brushes.DarkOrange,
-                        Foreground = Brushes.White,
+                        Background = Brushes.DarkOrange, Foreground = Brushes.White,
                         FontWeight = FontWeights.Bold,
                         HorizontalContentAlignment = HorizontalAlignment.Center
                     };
                     _revBtn.Click += RevBtn_Click;
-                    main.Children.Add (_revBtn);
 
                     _autoArmBtn = new Button
                     {
-                        Content = "AUTO ARM: OFF",
-                        Width = 304,
-                        Height = 30,
+                        Content = "AUTO ARM: OFF", Width = 300, Height = 30,
                         Margin = new Thickness (2, 4, 2, 0),
-                        Background = Brushes.DimGray,
-                        Foreground = Brushes.White,
+                        Background = Brushes.DimGray, Foreground = Brushes.White,
                         FontWeight = FontWeights.Bold,
                         HorizontalContentAlignment = HorizontalAlignment.Center
                     };
                     _autoArmBtn.Click += AutoArmBtn_Click;
-                    main.Children.Add (_autoArmBtn);
 
                     _closeBtn = new Button
                     {
-                        Content = "CLOSE ALL",
-                        Width = 304,
-                        Height = 30,
+                        Content = "CLOSE ALL", Width = 300, Height = 30,
                         Margin = new Thickness (2, 4, 2, 0),
-                        Background = Brushes.Maroon,
-                        Foreground = Brushes.White,
+                        Background = Brushes.Maroon, Foreground = Brushes.White,
                         FontWeight = FontWeights.Bold,
                         HorizontalContentAlignment = HorizontalAlignment.Center
                     };
                     _closeBtn.Click += CloseBtn_Click;
-                    main.Children.Add (_closeBtn);
 
-                    _controlPanel.Child = main;
+                    // ── Assemble body ─────────────────────────────────────
+                    var body = new StackPanel { Orientation = Orientation.Vertical };
+                    body.Children.Add (instrLabel);
+                    body.Children.Add (_panelAccountLabel);
+                    body.Children.Add (_statusLabel);
+                    body.Children.Add (btnRow);
+                    body.Children.Add (_revBtn);
+                    body.Children.Add (_autoArmBtn);
+                    body.Children.Add (_closeBtn);
+
+                    var main = new StackPanel { Orientation = Orientation.Vertical };
+                    main.Children.Add (_panelTitleBar);
+                    main.Children.Add (body);
+
+                    var inner = new Border
+                    {
+                        Background      = new SolidColorBrush (Color.FromArgb (220, 20, 20, 35)),
+                        BorderBrush     = Brushes.DodgerBlue,
+                        BorderThickness = new Thickness (2),
+                        CornerRadius    = new CornerRadius (5),
+                        Padding         = new Thickness (8),
+                        Child           = main
+                    };
+
+                    _controlPanel = new Border
+                    {
+                        HorizontalAlignment = HorizontalAlignment.Left,
+                        VerticalAlignment   = VerticalAlignment.Top,
+                        Margin              = new Thickness (PanelLeft, PanelTop, 0, 0),
+                        Child               = inner
+                    };
+                    double s = PanelScales[_panelScaleIndex];
+                    _controlPanel.LayoutTransform = new ScaleTransform (s, s);
+
                     UserControlCollection.Add (_controlPanel);
                     _uiInitialized = true;
 
@@ -6798,6 +6832,18 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     // Without these `-=` lines, an enable→disable→enable cycle accumulates
                     // click subscriptions and ghosted strategy instances stay rooted in
                     // WPF memory. Per feedback_nt8_wpf_quota_prevention.md.
+                    try
+                    {
+                        if (_panelTitleBar != null)
+                        {
+                            _panelTitleBar.MouseLeftButtonDown -= OnPanelTitleMouseDown;
+                            _panelTitleBar.MouseMove           -= OnPanelTitleMouseMove;
+                            _panelTitleBar.MouseLeftButtonUp   -= OnPanelTitleMouseUp;
+                        }
+                        if (_panelMinimizeArrow != null)
+                            _panelMinimizeArrow.MouseLeftButtonUp -= OnPanelMinimizeClick;
+                    }
+                    catch { }
                     try
                     {
                         if (_armLongBtn != null)
@@ -6832,13 +6878,18 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     if (_controlPanel != null && UserControlCollection.Contains (_controlPanel))
                         UserControlCollection.Remove (_controlPanel);
 
-                    _armLongBtn = null;
-                    _armShortBtn = null;
-                    _revBtn = null;
-                    _autoArmBtn = null;
-                    _closeBtn = null;
-                    _controlPanel = null;
-                    _uiInitialized = false;
+                    _panelTitleBar       = null;
+                    _panelMinimizeArrow  = null;
+                    _panelAccountLabel   = null;
+                    _isDraggingPanel     = false;
+                    _isPanelMinimized    = false;
+                    _armLongBtn          = null;
+                    _armShortBtn         = null;
+                    _revBtn              = null;
+                    _autoArmBtn          = null;
+                    _closeBtn            = null;
+                    _controlPanel        = null;
+                    _uiInitialized       = false;
                 }
                 catch { }
             });
@@ -6892,6 +6943,65 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         {
             FlattenEverything ("Manual CLOSE ALL button");
             UpdateRBroStatusUI ();
+        }
+
+        private void OnPanelTitleMouseDown (object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (e.ClickCount == 2)
+            {
+                _panelScaleIndex = (_panelScaleIndex + 1) % PanelScales.Length;
+                double s = PanelScales[_panelScaleIndex];
+                if (_controlPanel != null)
+                    _controlPanel.LayoutTransform = new ScaleTransform (s, s);
+                e.Handled = true;
+                return;
+            }
+            var el = sender as UIElement;
+            if (el == null) return;
+            _isDraggingPanel     = true;
+            _panelDragStartMouse = e.GetPosition (null);
+            el.CaptureMouse ();
+        }
+
+        private void OnPanelTitleMouseMove (object sender, System.Windows.Input.MouseEventArgs e)
+        {
+            if (!_isDraggingPanel || _controlPanel == null) return;
+            var cur  = e.GetPosition (null);
+            double dx = cur.X - _panelDragStartMouse.X;
+            double dy = cur.Y - _panelDragStartMouse.Y;
+            _panelDragStartMouse = cur;
+            double newLeft = Math.Max (0, _controlPanel.Margin.Left + dx);
+            double newTop  = Math.Max (0, _controlPanel.Margin.Top  + dy);
+            _controlPanel.Margin = new Thickness (newLeft, newTop, 0, 0);
+        }
+
+        private void OnPanelTitleMouseUp (object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            _isDraggingPanel = false;
+            var el = sender as UIElement;
+            if (el != null) el.ReleaseMouseCapture ();
+            if (_controlPanel != null)
+            {
+                PanelLeft = _controlPanel.Margin.Left;
+                PanelTop  = _controlPanel.Margin.Top;
+            }
+        }
+
+        private void OnPanelMinimizeClick (object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (_controlPanel == null) return;
+            var inner = _controlPanel.Child as Border;
+            if (inner == null) return;
+            var main = inner.Child as StackPanel;
+            if (main == null || main.Children.Count < 2) return;
+            var body = main.Children[1] as StackPanel;
+            if (body == null) return;
+
+            _isPanelMinimized  = !_isPanelMinimized;
+            body.Visibility    = _isPanelMinimized ? Visibility.Collapsed : Visibility.Visible;
+            if (_panelMinimizeArrow != null)
+                _panelMinimizeArrow.Text = _isPanelMinimized ? "▶" : "▼";
+            e.Handled = true;
         }
 
         private void UpdateRBroButtons ()
@@ -9539,8 +9649,24 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
         [NinjaScriptProperty]
         [Display (Name = "Control Panel Position", Order = 4, GroupName = "Dashboard Display",
-            Description = "Where to anchor the button panel on the chart.")]
+            Description = "Initial corner for the control panel (overridden by Panel Left/Top once dragged).")]
         public HudCorner ControlPanelPosition
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Panel Left", Order = 42, GroupName = "Dashboard Display",
+            Description = "Horizontal pixel offset of the floating control panel. Updated automatically when you drag the panel.")]
+        public double PanelLeft
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Panel Top", Order = 43, GroupName = "Dashboard Display",
+            Description = "Vertical pixel offset of the floating control panel. Updated automatically when you drag the panel.")]
+        public double PanelTop
         {
             get; set;
         }

@@ -1,6 +1,6 @@
 # GodZillaKilla — ATM Trading Strategy
 
-**Version:** 1.7.3
+**Version:** 1.7.4
 **Namespace:** `NinjaTrader.NinjaScript.Strategies.Playr101`
 **Author:** Playr101
 **Credits:** GreyBeard, ninZa.co, RenkoKings, ES, rbro112
@@ -13,6 +13,7 @@ GodZillaKilla is a NinjaTrader 8 strategy that reads signals from the six GodZil
 
 | Version | Summary |
 |---|---|
+| **1.7.4** | Control panel converted to floating draggable panel (Whisky style). Title bar drag to reposition; double-click title bar cycles scale (100% → 75% → 50%); `▼`/`▶` minimize button collapses body to title bar only. Account name added below Instrument. `PanelLeft`/`PanelTop` properties persist position across chart reloads. |
 | **1.7.3** | Per-indicator **Require** flags added for both Set 1 and Set 2. When a `Require` flag is enabled, that indicator must be among the signals that fired in the trigger direction — a count that reaches Required Count without the required indicator does not trigger. Defaults to false (no change to existing behavior). HUD signal tracking split into two lines: `Set1 Enabled:` and `Set2 Enabled:` (Set 2 line hidden when Set 2 is disabled). Required indicators are prefixed with `+` on both lines. |
 | **1.7.2** | Session PnL reset now fires from `Bars.IsFirstBarOfSession` on the primary bar series at the correct futures session open (e.g. 1700 CST for ES), not from the tick series at midnight. Martingale recovery blocked and `EnableMartingaleOnStopLoss` hidden in FixedTicks mode. `NC_Brush` hidden when `UseNCSignals = false`. NobleCloud Properties panel labels renamed from "NC:" to "NobleCloud:". |
 | **1.7.1** | `LogEnabled` defaults to true (required for MONARCH trade ingestion). ATM strategy field now shows a dropdown populated from ATM templates on disk (`FriendlyAtmConverter`). Descriptions added to all Properties panel fields. Namespace import updated to `GreyBeard`. Sub-indicator enums and category attributes moved to namespace scope. |
@@ -142,11 +143,21 @@ Size: `Tiny` / `Small` / `Normal` / `Large` / `Huge`.
 
 ## Control Panel
 
-An on-chart WPF button panel (ARM LONG / ARM SHORT / REV / AUTO / CLOSE) allows realtime manual control of:
-- Arming long and/or short entries independently
-- Toggling auto-arm (enables/disables all automated entries and clears L/S/REV state on disable)
-- Toggling reverse-on-opposite-signal behaviour
-- Immediately flattening all positions and cancelling orders
+A floating WPF panel shows instrument name, account name, and the five control buttons (ARM LONG / ARM SHORT / REV / AUTO ARM / CLOSE ALL). It can be freely repositioned and resized:
+
+| Interaction | Effect |
+|---|---|
+| Drag title bar | Move the panel anywhere on the chart |
+| Double-click title bar | Cycle panel scale: 100% → 75% → 50% |
+| Click `▼` / `▶` arrow | Minimize to title bar only / restore |
+
+Position (`PanelLeft` / `PanelTop`) is saved back to the strategy properties on mouse-up, so the panel reappears in the same location after a chart reload.
+
+Button functions:
+- **ARM LONG / ARM SHORT** — arm or disarm each direction independently
+- **AUTO ARM** — master toggle; ON re-arms both directions and REV, OFF disarms all three
+- **REV** — enable/disable reverse-on-opposite-signal
+- **CLOSE ALL** — flatten all positions immediately
 
 ---
 
@@ -180,7 +191,7 @@ One row is written per closed trade. Defense #8 forced-close events also write a
 | Filters | `EnableEmaFilter`, `EmaShortPeriod`, `EmaLongPeriod`, `EnableNewsFilter` |
 | Session | `EnableTF1`…`EnableTF3`, `StartTime1`…`EndTime3`, `EnableSkipTimeWindow` |
 | Risk | `EnableDailyProfitTarget`, `DailyProfitTarget`, `EnableDailyLossLimit`, `DailyLossLimit` |
-| Dashboard Display | `ShowDashboard`, `DashboardPosition`, `DashboardSize` |
+| Dashboard Display | `ShowDashboard`, `DashboardPosition`, `DashboardSize`, `ShowControlPanel`, `ControlPanelPosition`, `PanelLeft`, `PanelTop` |
 | Indicator Display | `ShowBarStatusIndicator` |
 | ATM Marker Display | `ShowEntryExitMarkers` |
 | Audio Alerts | `EnableSignalAudioAlerts`, `IndividualSignalAlertSound`, `GroupSignalAlertSound` |
