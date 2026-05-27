@@ -23,6 +23,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
+using System.Windows.Shapes;
 using System.Xml.Serialization;
 // SharpDX collides with WPF on Brush/Color/FontWeight/FontStyle - alias per AGENTS.md
 using Brush = System.Windows.Media.Brush;
@@ -87,6 +89,14 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         {
             AtmStrategy,
             FixedTicks
+        }
+
+        public enum GodZillaControlPanelSize
+        {
+            Large,       // 100%
+            Medium,      // 75%
+            Small,       // 50%
+            Minimized    // title bar only
         }
 
         public enum SignalComparisonOperator
@@ -414,24 +424,23 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         private bool _indicatorNullWarned = false;
 
         // Button Panel
-        private Border _controlPanel;
-        private Button _armLongBtn, _armShortBtn, _revBtn, _autoArmBtn, _closeBtn;
-        private Label  _statusLabel;
-        private Label  _panelAccountLabel;
-        private bool   _uiInitialized = false;
-        private bool   _armLong = true;
-        private bool   _armShort = true;
-        private bool   _autoArm = true;
-        private bool   _reverseOnAlternateSignal = true;
+        private Border  _controlPanel;
+        private Button  _armLongBtn, _armShortBtn, _revBtn, _autoArmBtn, _closeBtn;
+        private Label   _statusLabel;
+        private Label   _panelAccountLabel;
+        private bool    _uiInitialized = false;
+        private bool    _armLong = true;
+        private bool    _armShort = true;
+        private bool    _autoArm = true;
+        private bool    _reverseOnAlternateSignal = true;
 
-        // Floating panel — drag and resize state
-        private int    _panelScaleIndex = 0;
-        private static readonly double[] PanelScales = { 1.0, 0.75, 0.5 };
-        private bool   _isPanelMinimized = false;
+        // Floating panel — drag and size state
         private bool   _isDraggingPanel  = false;
         private System.Windows.Point _panelDragStartMouse;
-        private Border    _panelTitleBar;
-        private TextBlock _panelMinimizeArrow;
+        private Border              _panelTitleBar;
+        private Border              _pillBtn;       // pill minimize button container
+        private System.Windows.Shapes.Path _pillPath; // pill SVG outline
+        private StackPanel          _panelBody;     // body section (collapsed when Minimized)
         private volatile bool _strategyEnabled = true;
         private bool _hudIsMasterActive;
 
@@ -470,7 +479,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 Description = "GodZillaKilla — strategy using direct KingOrderBlock/PANAKanal/ThunderZilla/SuperJumpBoost/SumoPullback/NobleCloud child indicator signals.";
                 Name = "GodZillaKilla";
                 StrategyName = Name;
-                _strategyVersion = "1.7.4";
+                _strategyVersion = "1.7.5";
 
                 Author = "Playr101";
                 Credits = "GreyBeard, ninZa.co, RenkoKings, ES, rbro999";
@@ -526,6 +535,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 ControlPanelPosition = HudCorner.TopLeft;
                 ControlPanelLeft = 10.0;
                 ControlPanelTop  = 50.0;
+                ControlPanelSize = GodZillaControlPanelSize.Large;
 
                 ShowIndividualSignalStats = false;     // Default to Hidden
                 ShowGroupSignalTrackingStats = true;
@@ -6657,47 +6667,89 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     if (_uiInitialized)
                         return;
 
-                    // ── Title bar (drag handle + minimize) ────────────────
-                    _panelMinimizeArrow = new TextBlock
-                    {
-                        Text              = "▼",
-                        Foreground        = Brushes.Cyan,
-                        FontSize          = 10,
-                        FontWeight        = FontWeights.Bold,
-                        VerticalAlignment = VerticalAlignment.Center,
-                        Cursor            = System.Windows.Input.Cursors.Hand,
-                        Margin            = new Thickness (0, 0, 6, 0)
-                    };
-                    _panelMinimizeArrow.MouseLeftButtonDown += (s, ev) => ev.Handled = true;
-                    _panelMinimizeArrow.MouseLeftButtonUp   += OnPanelMinimizeClick;
+                    // ── Color palette ──────────────────────────────────────
+                    var bPanel    = new SolidColorBrush (Color.FromRgb (0x12, 0x12, 0x1C));
+                    var bBorder   = new SolidColorBrush (Color.FromRgb (0x2A, 0x2A, 0x3F));
+                    var bTitleBar = new SolidColorBrush (Color.FromRgb (0x0D, 0x0D, 0x18));
+                    var bPrimText = new SolidColorBrush (Color.FromRgb (0xC0, 0xC0, 0xD8));
+                    var bDimText  = new SolidColorBrush (Color.FromRgb (0x80, 0x80, 0xA0));
+                    var bSep      = new SolidColorBrush (Color.FromRgb (0x1E, 0x1E, 0x30));
+
+                    // ── Title bar ──────────────────────────────────────────
+                    // Gradient title text — cyan→blue→royal→pink ("noble" style)
+                    var titleGradient = new LinearGradientBrush ();
+                    titleGradient.StartPoint = new System.Windows.Point (0, 0);
+                    titleGradient.EndPoint   = new System.Windows.Point (1, 0);
+                    titleGradient.GradientStops.Add (new GradientStop (Color.FromRgb (0x00, 0xBF, 0xFF), 0.00));
+                    titleGradient.GradientStops.Add (new GradientStop (Color.FromRgb (0x1E, 0x90, 0xFF), 0.35));
+                    titleGradient.GradientStops.Add (new GradientStop (Color.FromRgb (0x41, 0x69, 0xE1), 0.65));
+                    titleGradient.GradientStops.Add (new GradientStop (Color.FromRgb (0xF5, 0x2B, 0xFF), 1.00));
 
                     var titleText = new TextBlock
                     {
                         Text                = "⚡ GodZilla Killa ⚡",
-                        Foreground          = Brushes.Cyan,
-                        FontWeight          = FontWeights.Bold,
-                        FontSize            = 13,
+                        Foreground          = titleGradient,
+                        FontSize            = 11,
                         VerticalAlignment   = VerticalAlignment.Center,
-                        HorizontalAlignment = HorizontalAlignment.Center
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        Margin              = new Thickness (4, 0, 34, 0),
+                        TextTrimming        = TextTrimming.CharacterEllipsis,
+                        Effect              = new DropShadowEffect
+                        {
+                            Color       = Color.FromRgb (0x00, 0xBF, 0xFF),
+                            BlurRadius  = 8,
+                            Opacity     = 0.6,
+                            ShadowDepth = 0
+                        }
+                    };
+
+                    // Pill minimize button (SVG pill outline, right-aligned in title bar)
+                    bool startMinimized = ControlPanelSize == GodZillaControlPanelSize.Minimized;
+                    _pillPath = new System.Windows.Shapes.Path
+                    {
+                        Stroke          = bPrimText,
+                        StrokeThickness = 1.5,
+                        Fill            = null,
+                        StrokeLineJoin  = PenLineJoin.Round,
+                        Opacity         = startMinimized ? 0.9 : 0.5,
+                        IsHitTestVisible = false,
+                        Data            = Geometry.Parse ("M 3,0 L 15,0 A 3,3 0 0 1 15,6 L 3,6 A 3,3 0 0 1 3,0 Z"),
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        VerticalAlignment   = VerticalAlignment.Center
+                    };
+                    _pillBtn = new Border
+                    {
+                        Width               = 22,
+                        Height              = 12,
+                        Margin              = new Thickness (0, 0, 8, 0),
+                        HorizontalAlignment = HorizontalAlignment.Right,
+                        VerticalAlignment   = VerticalAlignment.Center,
+                        Background          = Brushes.Transparent,
+                        Cursor              = System.Windows.Input.Cursors.Hand,
+                        ToolTip             = startMinimized ? "Click to restore" : "Click to minimize to title bar",
+                        Child               = _pillPath
+                    };
+                    _pillBtn.MouseLeftButtonDown += (s2, ev) => ev.Handled = true;
+                    _pillBtn.MouseLeftButtonUp   += OnPanelMinimizeClick;
+                    _pillBtn.MouseEnter          += (s2, ev) => { if (_pillPath != null) _pillPath.Opacity = 1.0; };
+                    _pillBtn.MouseLeave          += (s2, ev) =>
+                    {
+                        if (_pillPath != null)
+                            _pillPath.Opacity = (ControlPanelSize == GodZillaControlPanelSize.Minimized) ? 0.9 : 0.5;
                     };
 
                     var titleGrid = new Grid ();
-                    titleGrid.ColumnDefinitions.Add (new ColumnDefinition { Width = GridLength.Auto });
-                    titleGrid.ColumnDefinitions.Add (new ColumnDefinition { Width = new GridLength (1, GridUnitType.Star) });
-                    Grid.SetColumn (_panelMinimizeArrow, 0);
-                    Grid.SetColumn (titleText, 1);
-                    titleGrid.Children.Add (_panelMinimizeArrow);
                     titleGrid.Children.Add (titleText);
+                    titleGrid.Children.Add (_pillBtn);
 
                     _panelTitleBar = new Border
                     {
-                        Background      = new SolidColorBrush (Color.FromArgb (60, 0, 150, 255)),
-                        CornerRadius    = new CornerRadius (3),
-                        Padding         = new Thickness (6, 4, 6, 4),
-                        Margin          = new Thickness (0, 0, 0, 4),
-                        Cursor          = System.Windows.Input.Cursors.SizeAll,
-                        Child           = titleGrid,
-                        ToolTip         = "Drag to move  •  Double-click to resize (Normal → Small → Tiny)"
+                        Background   = bTitleBar,
+                        Height       = 24,
+                        CornerRadius = new CornerRadius (13, 13, 0, 0),
+                        Cursor       = System.Windows.Input.Cursors.SizeAll,
+                        Child        = titleGrid,
+                        ToolTip      = "Double-click to resize (Large → Medium → Small → Minimized)  ·  Drag to move"
                     };
                     _panelTitleBar.MouseLeftButtonDown += OnPanelTitleMouseDown;
                     _panelTitleBar.MouseMove           += OnPanelTitleMouseMove;
@@ -6711,21 +6763,20 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     var instrLabel = new TextBlock
                     {
                         Text                = "Instrument: " + instrName,
-                        Foreground          = Brushes.DeepSkyBlue,
-                        FontWeight          = FontWeights.Bold,
+                        Foreground          = new SolidColorBrush (Color.FromRgb (0x60, 0xB0, 0xFF)),
                         FontSize            = 11,
                         TextAlignment       = TextAlignment.Center,
                         HorizontalAlignment = HorizontalAlignment.Center,
-                        Margin              = new Thickness (0, 0, 0, 2)
+                        Margin              = new Thickness (0, 4, 0, 2)
                     };
 
                     _panelAccountLabel = new Label
                     {
                         Content                    = "Account: " + acctName,
-                        Foreground                 = Brushes.LightSteelBlue,
+                        Foreground                 = bDimText,
                         FontSize                   = 11,
                         Padding                    = new Thickness (0),
-                        Margin                     = new Thickness (0, 0, 0, 4),
+                        Margin                     = new Thickness (0, 0, 0, 2),
                         HorizontalContentAlignment = HorizontalAlignment.Center
                     };
 
@@ -6739,98 +6790,90 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                         HorizontalContentAlignment = HorizontalAlignment.Center
                     };
 
+                    var separator = new Border
+                    {
+                        Height     = 1,
+                        Background = bSep,
+                        Margin     = new Thickness (0, 2, 0, 4)
+                    };
+
                     // ── Buttons ────────────────────────────────────────────
+                    var bLongArmed   = new SolidColorBrush (Color.FromRgb (0x0D, 0x30, 0x1A));
+                    var bLongBdr     = new SolidColorBrush (Color.FromRgb (0x28, 0xC8, 0x60));
+                    var bShortArmed  = new SolidColorBrush (Color.FromRgb (0x30, 0x0D, 0x0D));
+                    var bShortBdr    = new SolidColorBrush (Color.FromRgb (0xC8, 0x20, 0x28));
+                    var bInactBtn    = new SolidColorBrush (Color.FromRgb (0x1E, 0x1E, 0x30));
+                    var bInactBdr    = new SolidColorBrush (Color.FromRgb (0x3A, 0x3A, 0x50));
+
+                    _armLongBtn = MakeControlPanelButton ("ARM LONG", 30, bInactBtn, bInactBdr);
+                    _armLongBtn.Width  = 148;
+                    _armLongBtn.Margin = new Thickness (2);
+                    _armLongBtn.Click += ArmLongBtn_Click;
+
+                    _armShortBtn = MakeControlPanelButton ("ARM SHORT", 30, bInactBtn, bInactBdr);
+                    _armShortBtn.Width  = 148;
+                    _armShortBtn.Margin = new Thickness (2);
+                    _armShortBtn.Click += ArmShortBtn_Click;
+
                     var btnRow = new StackPanel
                     {
                         Orientation         = Orientation.Horizontal,
                         HorizontalAlignment = HorizontalAlignment.Center
                     };
-
-                    _armLongBtn = new Button
-                    {
-                        Content = "ARM LONG", Width = 148, Height = 30,
-                        Margin = new Thickness (2),
-                        Background = Brushes.DarkGreen, Foreground = Brushes.White,
-                        FontWeight = FontWeights.Bold,
-                        HorizontalContentAlignment = HorizontalAlignment.Center
-                    };
-                    _armLongBtn.Click += ArmLongBtn_Click;
                     btnRow.Children.Add (_armLongBtn);
-
-                    _armShortBtn = new Button
-                    {
-                        Content = "ARM SHORT", Width = 148, Height = 30,
-                        Margin = new Thickness (2),
-                        Background = Brushes.DarkRed, Foreground = Brushes.White,
-                        FontWeight = FontWeights.Bold,
-                        HorizontalContentAlignment = HorizontalAlignment.Center
-                    };
-                    _armShortBtn.Click += ArmShortBtn_Click;
                     btnRow.Children.Add (_armShortBtn);
 
-                    _revBtn = new Button
-                    {
-                        Content = "REV: ON", Width = 300, Height = 30,
-                        Margin = new Thickness (2, 4, 2, 0),
-                        Background = Brushes.DarkOrange, Foreground = Brushes.White,
-                        FontWeight = FontWeights.Bold,
-                        HorizontalContentAlignment = HorizontalAlignment.Center
-                    };
+                    _revBtn = MakeControlPanelButton ("REV: ON", 30,
+                        new SolidColorBrush (Color.FromRgb (0x30, 0x20, 0x10)),
+                        new SolidColorBrush (Color.FromRgb (0xC8, 0x90, 0x20)));
+                    _revBtn.Width  = 300;
+                    _revBtn.Margin = new Thickness (2, 4, 2, 0);
                     _revBtn.Click += RevBtn_Click;
 
-                    _autoArmBtn = new Button
-                    {
-                        Content = "AUTO ARM: OFF", Width = 300, Height = 30,
-                        Margin = new Thickness (2, 4, 2, 0),
-                        Background = Brushes.DimGray, Foreground = Brushes.White,
-                        FontWeight = FontWeights.Bold,
-                        HorizontalContentAlignment = HorizontalAlignment.Center
-                    };
+                    _autoArmBtn = MakeControlPanelButton ("AUTO ARM: OFF", 30, bInactBtn, bInactBdr);
+                    _autoArmBtn.Width  = 300;
+                    _autoArmBtn.Margin = new Thickness (2, 4, 2, 0);
                     _autoArmBtn.Click += AutoArmBtn_Click;
 
-                    _closeBtn = new Button
-                    {
-                        Content = "CLOSE ALL", Width = 300, Height = 30,
-                        Margin = new Thickness (2, 4, 2, 0),
-                        Background = Brushes.Maroon, Foreground = Brushes.White,
-                        FontWeight = FontWeights.Bold,
-                        HorizontalContentAlignment = HorizontalAlignment.Center
-                    };
+                    _closeBtn = MakeControlPanelButton ("CLOSE ALL", 30,
+                        bShortArmed, bShortBdr);
+                    _closeBtn.Foreground = new SolidColorBrush (Color.FromRgb (0xFF, 0x60, 0x50));
+                    _closeBtn.Width  = 300;
+                    _closeBtn.Margin = new Thickness (2, 4, 2, 0);
                     _closeBtn.Click += CloseBtn_Click;
 
                     // ── Assemble body ─────────────────────────────────────
-                    var body = new StackPanel { Orientation = Orientation.Vertical };
-                    body.Children.Add (instrLabel);
-                    body.Children.Add (_panelAccountLabel);
-                    body.Children.Add (_statusLabel);
-                    body.Children.Add (btnRow);
-                    body.Children.Add (_revBtn);
-                    body.Children.Add (_autoArmBtn);
-                    body.Children.Add (_closeBtn);
+                    _panelBody = new StackPanel { Orientation = Orientation.Vertical };
+                    _panelBody.Children.Add (instrLabel);
+                    _panelBody.Children.Add (_panelAccountLabel);
+                    _panelBody.Children.Add (_statusLabel);
+                    _panelBody.Children.Add (separator);
+                    _panelBody.Children.Add (btnRow);
+                    _panelBody.Children.Add (_revBtn);
+                    _panelBody.Children.Add (_autoArmBtn);
+                    _panelBody.Children.Add (_closeBtn);
 
                     var main = new StackPanel { Orientation = Orientation.Vertical };
                     main.Children.Add (_panelTitleBar);
-                    main.Children.Add (body);
-
-                    var inner = new Border
-                    {
-                        Background      = new SolidColorBrush (Color.FromArgb (220, 20, 20, 35)),
-                        BorderBrush     = Brushes.DodgerBlue,
-                        BorderThickness = new Thickness (2),
-                        CornerRadius    = new CornerRadius (5),
-                        Padding         = new Thickness (8),
-                        Child           = main
-                    };
+                    main.Children.Add (_panelBody);
 
                     _controlPanel = new Border
                     {
                         HorizontalAlignment = HorizontalAlignment.Left,
                         VerticalAlignment   = VerticalAlignment.Top,
                         Margin              = new Thickness (ControlPanelLeft, ControlPanelTop, 0, 0),
-                        Child               = inner
+                        Background          = bPanel,
+                        BorderBrush         = bBorder,
+                        BorderThickness     = new Thickness (2),
+                        CornerRadius        = new CornerRadius (15),
+                        ClipToBounds        = true,
+                        Padding             = new Thickness (0),
+                        Child               = main
                     };
-                    double s = PanelScales[_panelScaleIndex];
+                    double s = GetPanelScale ();
                     _controlPanel.LayoutTransform = new ScaleTransform (s, s);
+                    if (startMinimized)
+                        _panelBody.Visibility = Visibility.Collapsed;
 
                     UserControlCollection.Add (_controlPanel);
                     _uiInitialized = true;
@@ -6844,6 +6887,97 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                         Print ($"[{Name}] Button panel error: {ex.Message}");
                 }
             });
+        }
+
+        private System.Windows.Controls.Button MakeControlPanelButton (string label, double height, Brush background, Brush borderBrush)
+        {
+            var colFg       = Color.FromRgb (0xC0, 0xC0, 0xD8);
+            var colHoverBdr = Color.FromRgb (0x5A, 0x8A, 0xCA);
+            var colPressed  = Color.FromRgb (0x1A, 0x2A, 0x4A);
+
+            var btn = new System.Windows.Controls.Button
+            {
+                Height           = height,
+                Cursor           = System.Windows.Input.Cursors.Hand,
+                FocusVisualStyle = null,
+                Padding          = new Thickness (0),
+                Background       = background,
+                BorderBrush      = borderBrush,
+                BorderThickness  = new Thickness (1),
+                Foreground       = new SolidColorBrush (colFg),
+                FontSize         = 11,
+                FontWeight       = FontWeights.Bold
+            };
+
+            var ct   = new System.Windows.Controls.ControlTemplate (typeof (System.Windows.Controls.Button));
+            var grid = new FrameworkElementFactory (typeof (System.Windows.Controls.Grid));
+
+            var bf = new FrameworkElementFactory (typeof (System.Windows.Controls.Border), "BaseBorder");
+            bf.SetValue (System.Windows.Controls.Border.BackgroundProperty,       new TemplateBindingExtension (System.Windows.Controls.Control.BackgroundProperty));
+            bf.SetValue (System.Windows.Controls.Border.BorderBrushProperty,      new TemplateBindingExtension (System.Windows.Controls.Control.BorderBrushProperty));
+            bf.SetValue (System.Windows.Controls.Border.BorderThicknessProperty,  new TemplateBindingExtension (System.Windows.Controls.Control.BorderThicknessProperty));
+            bf.SetValue (System.Windows.Controls.Border.CornerRadiusProperty,     new CornerRadius (4));
+            grid.AppendChild (bf);
+
+            var hf = new FrameworkElementFactory (typeof (System.Windows.Controls.Border), "HoverOverlay");
+            hf.SetValue (System.Windows.Controls.Border.BackgroundProperty,      new SolidColorBrush (Color.FromArgb (40, 0x5A, 0x8A, 0xCA)));
+            hf.SetValue (System.Windows.Controls.Border.BorderBrushProperty,     new SolidColorBrush (colHoverBdr));
+            hf.SetValue (System.Windows.Controls.Border.BorderThicknessProperty, new Thickness (1.5));
+            hf.SetValue (System.Windows.Controls.Border.CornerRadiusProperty,    new CornerRadius (4));
+            hf.SetValue (UIElement.OpacityProperty,          0.0);
+            hf.SetValue (UIElement.IsHitTestVisibleProperty, false);
+            grid.AppendChild (hf);
+
+            var textGrid = new FrameworkElementFactory (typeof (System.Windows.Controls.Grid), "TextGrid");
+            var cp = new FrameworkElementFactory (typeof (System.Windows.Controls.TextBlock));
+            cp.SetValue (System.Windows.Controls.TextBlock.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            cp.SetValue (System.Windows.Controls.TextBlock.VerticalAlignmentProperty,   VerticalAlignment.Center);
+            cp.SetValue (System.Windows.Controls.TextBlock.TextAlignmentProperty,       TextAlignment.Center);
+            cp.SetValue (System.Windows.Controls.TextBlock.TextProperty,      new TemplateBindingExtension (System.Windows.Controls.ContentControl.ContentProperty));
+            cp.SetValue (System.Windows.Controls.TextBlock.ForegroundProperty, new TemplateBindingExtension (System.Windows.Controls.Control.ForegroundProperty));
+            cp.SetValue (System.Windows.Controls.TextBlock.FontSizeProperty,   new TemplateBindingExtension (System.Windows.Controls.Control.FontSizeProperty));
+            cp.SetValue (System.Windows.Controls.TextBlock.FontWeightProperty, new TemplateBindingExtension (System.Windows.Controls.Control.FontWeightProperty));
+            textGrid.AppendChild (cp);
+            grid.AppendChild (textGrid);
+
+            ct.VisualTree = grid;
+
+            var hoverTrigger = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            hoverTrigger.Setters.Add (new Setter { TargetName = "HoverOverlay", Property = UIElement.OpacityProperty, Value = 1.0 });
+            ct.Triggers.Add (hoverTrigger);
+
+            var pressedTrigger = new Trigger { Property = System.Windows.Controls.Button.IsPressedProperty, Value = true };
+            pressedTrigger.Setters.Add (new Setter { TargetName = "HoverOverlay", Property = System.Windows.Controls.Border.BackgroundProperty, Value = new SolidColorBrush (colPressed) });
+            pressedTrigger.Setters.Add (new Setter { TargetName = "TextGrid",     Property = FrameworkElement.MarginProperty,                    Value = new Thickness (0, 1, 0, -1) });
+            ct.Triggers.Add (pressedTrigger);
+
+            btn.Template = ct;
+            btn.Content  = label;
+            return btn;
+        }
+
+        private double GetPanelScale ()
+        {
+            switch (ControlPanelSize)
+            {
+                case GodZillaControlPanelSize.Large:     return 1.00;
+                case GodZillaControlPanelSize.Medium:    return 0.75;
+                case GodZillaControlPanelSize.Small:     return 0.50;
+                case GodZillaControlPanelSize.Minimized: return 1.00;
+                default: return 1.00;
+            }
+        }
+
+        private void ApplyControlPanelSize ()
+        {
+            if (_controlPanel == null) return;
+            double s = GetPanelScale ();
+            _controlPanel.LayoutTransform = new ScaleTransform (s, s);
+            if (_panelBody != null)
+                _panelBody.Visibility = (ControlPanelSize == GodZillaControlPanelSize.Minimized)
+                    ? Visibility.Collapsed : Visibility.Visible;
+            if (_pillPath != null)
+                _pillPath.Opacity = (ControlPanelSize == GodZillaControlPanelSize.Minimized) ? 0.9 : 0.5;
         }
 
         private void RemoveRBroControlPanel ()
@@ -6868,8 +7002,8 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                             _panelTitleBar.MouseMove           -= OnPanelTitleMouseMove;
                             _panelTitleBar.MouseLeftButtonUp   -= OnPanelTitleMouseUp;
                         }
-                        if (_panelMinimizeArrow != null)
-                            _panelMinimizeArrow.MouseLeftButtonUp -= OnPanelMinimizeClick;
+                        if (_pillBtn != null)
+                            _pillBtn.MouseLeftButtonUp -= OnPanelMinimizeClick;
                     }
                     catch { }
                     try
@@ -6907,10 +7041,11 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                         UserControlCollection.Remove (_controlPanel);
 
                     _panelTitleBar       = null;
-                    _panelMinimizeArrow  = null;
+                    _pillBtn             = null;
+                    _pillPath            = null;
+                    _panelBody           = null;
                     _panelAccountLabel   = null;
                     _isDraggingPanel     = false;
-                    _isPanelMinimized    = false;
                     _armLongBtn          = null;
                     _armShortBtn         = null;
                     _revBtn              = null;
@@ -6977,10 +7112,8 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         {
             if (e.ClickCount == 2)
             {
-                _panelScaleIndex = (_panelScaleIndex + 1) % PanelScales.Length;
-                double s = PanelScales[_panelScaleIndex];
-                if (_controlPanel != null)
-                    _controlPanel.LayoutTransform = new ScaleTransform (s, s);
+                ControlPanelSize = (GodZillaControlPanelSize)(((int)ControlPanelSize + 1) % 4);
+                ApplyControlPanelSize ();
                 e.Handled = true;
                 return;
             }
@@ -7018,17 +7151,10 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         private void OnPanelMinimizeClick (object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
             if (_controlPanel == null) return;
-            var inner = _controlPanel.Child as Border;
-            if (inner == null) return;
-            var main = inner.Child as StackPanel;
-            if (main == null || main.Children.Count < 2) return;
-            var body = main.Children[1] as StackPanel;
-            if (body == null) return;
-
-            _isPanelMinimized  = !_isPanelMinimized;
-            body.Visibility    = _isPanelMinimized ? Visibility.Collapsed : Visibility.Visible;
-            if (_panelMinimizeArrow != null)
-                _panelMinimizeArrow.Text = _isPanelMinimized ? "▶" : "▼";
+            ControlPanelSize = (ControlPanelSize == GodZillaControlPanelSize.Minimized)
+                ? GodZillaControlPanelSize.Large
+                : GodZillaControlPanelSize.Minimized;
+            ApplyControlPanelSize ();
             e.Handled = true;
         }
 
@@ -7037,17 +7163,29 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             if (_armLongBtn == null || _armShortBtn == null || _revBtn == null || _autoArmBtn == null)
                 return;
 
-            _armLongBtn.Background = _armLong ? Brushes.LimeGreen : Brushes.DarkGreen;
-            _armLongBtn.Content = _armLong ? "ARMED LONG" : "ARM LONG";
+            var bInact    = new SolidColorBrush (Color.FromRgb (0x1E, 0x1E, 0x30));
+            var bInactBdr = new SolidColorBrush (Color.FromRgb (0x3A, 0x3A, 0x50));
+            var bInactFg  = new SolidColorBrush (Color.FromRgb (0x80, 0x80, 0xA0));
 
-            _armShortBtn.Background = _armShort ? Brushes.Red : Brushes.DarkRed;
-            _armShortBtn.Content = _armShort ? "ARMED SHORT" : "ARM SHORT";
+            _armLongBtn.Background  = _armLong ? new SolidColorBrush (Color.FromRgb (0x1A, 0x3A, 0x1A)) : bInact;
+            _armLongBtn.BorderBrush = _armLong ? new SolidColorBrush (Color.FromRgb (0x20, 0xA0, 0x20)) : bInactBdr;
+            _armLongBtn.Foreground  = _armLong ? new SolidColorBrush (Color.FromRgb (0x80, 0xFF, 0x80)) : bInactFg;
+            _armLongBtn.Content     = _armLong ? "ARMED LONG" : "ARM LONG";
 
-            _revBtn.Background = _reverseOnAlternateSignal ? Brushes.DarkOrange : Brushes.DimGray;
-            _revBtn.Content = _reverseOnAlternateSignal ? "REV: ON" : "REV: OFF";
+            _armShortBtn.Background  = _armShort ? new SolidColorBrush (Color.FromRgb (0x3A, 0x1A, 0x1A)) : bInact;
+            _armShortBtn.BorderBrush = _armShort ? new SolidColorBrush (Color.FromRgb (0xA0, 0x20, 0x20)) : bInactBdr;
+            _armShortBtn.Foreground  = _armShort ? new SolidColorBrush (Color.FromRgb (0xFF, 0x80, 0x80)) : bInactFg;
+            _armShortBtn.Content     = _armShort ? "ARMED SHORT" : "ARM SHORT";
 
-            _autoArmBtn.Background = _autoArm ? Brushes.DodgerBlue : Brushes.DimGray;
-            _autoArmBtn.Content = _autoArm ? "AUTO ARM: ON" : "AUTO ARM: OFF";
+            _revBtn.Background  = _reverseOnAlternateSignal ? new SolidColorBrush (Color.FromRgb (0x30, 0x20, 0x10)) : bInact;
+            _revBtn.BorderBrush = _reverseOnAlternateSignal ? new SolidColorBrush (Color.FromRgb (0xC8, 0x90, 0x20)) : bInactBdr;
+            _revBtn.Foreground  = _reverseOnAlternateSignal ? new SolidColorBrush (Color.FromRgb (0xFF, 0xB0, 0x40)) : bInactFg;
+            _revBtn.Content     = _reverseOnAlternateSignal ? "REV: ON" : "REV: OFF";
+
+            _autoArmBtn.Background  = _autoArm ? new SolidColorBrush (Color.FromRgb (0x0E, 0x1E, 0x3A)) : bInact;
+            _autoArmBtn.BorderBrush = _autoArm ? new SolidColorBrush (Color.FromRgb (0x1E, 0x50, 0x90)) : bInactBdr;
+            _autoArmBtn.Foreground  = _autoArm ? new SolidColorBrush (Color.FromRgb (0x60, 0xA0, 0xFF)) : bInactFg;
+            _autoArmBtn.Content     = _autoArm ? "AUTO ARM: ON" : "AUTO ARM: OFF";
         }
 
         private void UpdateRBroStatusUI ()
@@ -9711,6 +9849,14 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         [Display (Name = "Control Panel Top", Order = 8, GroupName = "Dashboard Display",
             Description = "Vertical pixel offset of the floating control panel. Updated automatically when you drag the panel.")]
         public double ControlPanelTop
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Control Panel Size", Order = 9, GroupName = "Dashboard Display",
+            Description = "Panel scale: Large=100%, Medium=75%, Small=50%, Minimized=title bar only. Also cycles on double-click of the title bar.")]
+        public GodZillaControlPanelSize ControlPanelSize
         {
             get; set;
         }
