@@ -27,7 +27,7 @@ NinjaScript C# code for NinjaTrader 8 (NT8). There is no build system, test runn
 
 **Never change the namespaces.** NT8 uses them for internal serialization of saved chart templates and ATM settings. Renaming breaks all existing user configurations silently.
 
-The default namespace for all new indicators is `NinjaTrader.NinjaScript.Indicators.GreyBeard`. New strategies go under `NinjaTrader.NinjaScript.Strategies.Playr101`.
+The default namespace for all new indicators is `NinjaTrader.NinjaScript.Indicators.GreyBeard`. New strategies go under `NinjaTrader.NinjaScript.Strategies.GreyBeard`.
 
 ---
 
@@ -42,6 +42,7 @@ Kaiju/
 ├── originals/        Pre-edit file snapshots kept before major changes — never load into NT8
 ├── old versions/     Historical releases for rollback reference — never load alongside current files (namespace conflicts)
 └── sound files/      WAV files for audio alerts — must be copied to NT8's sounds directory to appear in the properties picker
+└── MONARCH/          MONARCH Reporting system for GodZillaKilla
 ```
 
 ---

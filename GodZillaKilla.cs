@@ -478,7 +478,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 Description = "GodZillaKilla — strategy using direct KingOrderBlock/PANAKanal/ThunderZilla/SuperJumpBoost/SumoPullback/NobleCloud child indicator signals.";
                 Name = "GodZillaKilla";
                 StrategyName = Name;
-                _strategyVersion = "1.8";
+                _strategyVersion = "1.8.1";
 
                 Author = "Playr101";
                 Credits = "GreyBeard, ninZa.co, RenkoKings, ES, rbro999";
@@ -541,7 +541,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
                 EnableSignalTracking = true;
                 GroupTriggerSet1RequiredCount = 1;
-                UseKOSignals = false;
+                UseKOSignals = true;
                 RequireKOSignal = false;
                 KO_LongValue = 1;
                 KO_ShortValue = -1;
@@ -557,11 +557,11 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 RequireSJSignal = false;
                 SJ_LongValue = 1;
                 SJ_ShortValue = -1;
-                UseSUSignals = false;
+                UseSUSignals = true;
                 RequireSUSignal = false;
                 SU_LongValue = 1;
                 SU_ShortValue = -1;
-                UseNCSignals = false;
+                UseNCSignals = true;
                 RequireNCSignal = false;
                 NC_LongValue = 1;
                 NC_ShortValue = -1;
@@ -582,7 +582,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 // Optional second same-bar group trigger set
                 EnableGroupTriggerSet2 = false;
                 GroupTriggerSet2RequiredCount = 3;
-                G2_UseKOSignals = false;
+                G2_UseKOSignals = true;
                 G2_RequireKOSignal = false;
                 G2_KO_LongValue = 1;
                 G2_KO_ShortValue = -1;
@@ -598,11 +598,11 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 G2_RequireSJSignal = false;
                 G2_SJ_LongValue = 1;
                 G2_SJ_ShortValue = -1;
-                G2_UseSUSignals = false;
+                G2_UseSUSignals = true;
                 G2_RequireSUSignal = false;
                 G2_SU_LongValue = 1;
                 G2_SU_ShortValue = -1;
-                G2_UseNCSignals = false;
+                G2_UseNCSignals = true;
                 G2_RequireNCSignal = false;
                 G2_NC_LongOperator = SignalComparisonOperator.Equal;
                 G2_NC_LongValue = 1;
@@ -679,6 +679,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 NewsDefaultFont = new SimpleFont ("Arial", 10);
                 NewsWarningFont = new SimpleFont ("Arial", 10) { Bold = true, Italic = true };
                 NewsDebug = false;
+                NewsEnableCsvLog = true;
 
                 // Session Times
                 EnableTF1 = true;
@@ -1025,7 +1026,8 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                             NewsLowImpactColor,                 // LowPriorityColor
                             NewsDefaultFont,                    // DefaultFont
                             NewsWarningFont,                    // WarningFont
-                            NewsDebug                           // Debug
+                            NewsDebug,                          // Debug
+                            NewsEnableCsvLog                    // EnableCsvLog
                         );
 
                         AddChartIndicator (newsIndicator);
@@ -3874,7 +3876,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             if (UseNCSignals) enabledSignals.Add ((RequireNCSignal ? "+" : "") + "NC");
 
             lines.Add (enabledSignals.Count > 0
-                ? "Set1 Enabled: " + string.Join (", ", enabledSignals)
+                ? "Set1 Enabled R:" + GroupTriggerSet1RequiredCount + "/" + enabledSignals.Count + ": " + string.Join (", ", enabledSignals)
                 : "Set1 Enabled: None");
 
             // Set 2 enabled signals (only shown when Set 2 is active).
@@ -3889,7 +3891,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 if (G2_UseNCSignals) set2Signals.Add ((G2_RequireNCSignal ? "+" : "") + "NC");
 
                 lines.Add (set2Signals.Count > 0
-                    ? "Set2 Enabled: " + string.Join (", ", set2Signals)
+                    ? "Set2 Enabled R:" + GroupTriggerSet2RequiredCount + "/" + set2Signals.Count + ": " + string.Join (", ", set2Signals)
                     : "Set2 Enabled: None");
             }
 
@@ -7330,7 +7332,8 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 "NewsLowImpactColor",
                 "NewsDefaultFont",
                 "NewsWarningFont",
-                "NewsDebug"
+                "NewsDebug",
+                "NewsEnableCsvLog"
             };
 
             foreach (string p in toRemove)
@@ -9021,6 +9024,14 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         [NinjaScriptProperty]
         [Display (Name = "Debug", Order = 32, GroupName = "Filters")]
         public bool NewsDebug
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Enable News CSV Log", Order = 33, GroupName = "Filters",
+            Description = "Write news events to NewsSignals_DateTime.csv each time the calendar is refreshed.")]
+        public bool NewsEnableCsvLog
         {
             get; set;
         }
