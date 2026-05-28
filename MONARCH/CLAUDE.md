@@ -381,6 +381,7 @@ the `Remove-Item` line above clears it.
 
 | Version | Notes |
 |---------|-------|
+| 1.0.3   | Castle Bravo 4-week calendar now anchors to the current week's Friday instead of the most recent past Friday — current week no longer disappears Mon–Thu. |
 | 1.0.2   | Symbol Breakdown section on daily, weekly, and Castle Bravo — stats grouped by base ticker (MNQ, NQ, ES, etc.). Instrument label derived from log data; no contract-roll maintenance. |
 | 1.0.1   | Any GodZilla_* file supported; account derived from filename; all accounts (APEX + Sim) included in reports; per-account KPI breakdown in daily, weekly, and hub; daemon mode (`-d`); 60s countdown pause on manual runs; `--version` shows author/web/email; exe Properties metadata via `make_version_file.py`. |
 | 1.0.0   | Initial release – modular rewrite of generate_report.py. Standalone exe, auto log sync, backfill, Sat/Sun guardrail, CastleBravo hub, MONARCH branding, icon support. |

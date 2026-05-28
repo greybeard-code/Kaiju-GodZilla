@@ -102,8 +102,7 @@ def build_hub_html(all_trades: List[dict], index: dict,
         recs_section = f'<div class="section"><h2>Current Recommendations</h2>{rec_html}</div>'
 
     # ── 4-Week Calendar ────────────────────────────────────────────────────────
-    days_since_fri = (today.weekday() - 4) % 7
-    latest_friday  = today - timedelta(days=days_since_fri)
+    latest_friday  = get_friday_of_week(today)
 
     # Collect 4 weeks oldest→newest
     weeks = []

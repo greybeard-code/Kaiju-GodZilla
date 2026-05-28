@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 
 # ── Branding ──────────────────────────────────────────────────────────────────
-VERSION  = "1.0.2"
+VERSION  = "1.0.3"
 APP_NAME = "MONARCH Intelligence Report System"
 HUB_FILE = "CastleBravo.html"
 AUTHOR   = "GreyBeard"
