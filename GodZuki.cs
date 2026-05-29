@@ -68,7 +68,7 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 		}
 
 		#region Variables
-		private string _version = "1.2";
+		private string _version = "1.2.1";
 
 		private gbKingOrderBlock _king;
 		private gbPANAKanal      _pana;
@@ -99,12 +99,16 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 		private bool     _hudEmaBullish = false;
 		private string   _hudSet1ConfigLine = "";
 		private bool     _hudSet1On         = false;
+		private int      _hudS1State        = 0;   // -1=short  0=flat  1=long
+		private bool     _hudS1Warning      = false;
 		private string   _hudSet2ConfigLine = "";
 		private bool     _hudSet2On         = false;
+		private int      _hudS2State        = 0;
+		private bool     _hudS2Warning      = false;
 
 		// SharpDX
 		private SharpDX.DirectWrite.TextFormat         _dashFormat, _dashTitleFormat;
-		private SharpDX.Direct2D1.SolidColorBrush      _bTextWhite, _bTextDim, _bTextGreen, _bTextRed, _bTextCyan, _bBackground, _bBorder;
+		private SharpDX.Direct2D1.SolidColorBrush      _bTextWhite, _bTextDim, _bTextGreen, _bTextRed, _bTextYellow, _bTextCyan, _bBackground, _bBorder;
 		private SharpDX.Direct2D1.RenderTarget          _lastSeenRenderTarget;
 		private bool                                    _dxInitialized;
 		private int                                     _hudErrors;
@@ -119,7 +123,7 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 			{
 				Description = "GodZuki — pure signal indicator. KO/PA/TH/SJ/SU/NC signals with EMA filter, audio alerts, and CSV logging. No trading.";
 				Name        = "GodZuki";
-				_version    = "1.2";
+				_version    = "1.2.1";
 
 				IsOverlay                = true;
 				IsAutoScale              = false;
@@ -147,22 +151,22 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "NC Signal");    // Values[10]
 
 				// Signals — Set 1
-				GroupTriggerSet1RequiredCount = 2;
-				UseKOSignals = false;  RequireKOSignal = false;  KO_LongOperator = GodZukiSignalOperator.Equal; KO_LongValue = 1;  KO_ShortOperator = GodZukiSignalOperator.Equal; KO_ShortValue = -1;
+				GroupTriggerSet1RequiredCount = 3;
+				UseKOSignals = true;   RequireKOSignal = false;  KO_LongOperator = GodZukiSignalOperator.Equal; KO_LongValue = 1;  KO_ShortOperator = GodZukiSignalOperator.Equal; KO_ShortValue = -1;
 				UsePASignals = true;   RequirePASignal = false;  PA_LongOperator = GodZukiSignalOperator.Equal; PA_LongValue = 2;  PA_ShortOperator = GodZukiSignalOperator.Equal; PA_ShortValue = -2;
 				UseTHSignals = true;   RequireTHSignal = false;  TH_LongOperator = GodZukiSignalOperator.Equal; TH_LongValue = 2;  TH_ShortOperator = GodZukiSignalOperator.Equal; TH_ShortValue = -2;
 				UseSJSignals = true;   RequireSJSignal = false;  SJ_LongOperator = GodZukiSignalOperator.Equal; SJ_LongValue = 1;  SJ_ShortOperator = GodZukiSignalOperator.Equal; SJ_ShortValue = -1;
-				UseSUSignals = false;  RequireSUSignal = false;  SU_LongOperator = GodZukiSignalOperator.Equal; SU_LongValue = 1;  SU_ShortOperator = GodZukiSignalOperator.Equal; SU_ShortValue = -1;
-				UseNCSignals = false;  RequireNCSignal = false;  NC_LongOperator = GodZukiSignalOperator.Equal; NC_LongValue = 1;  NC_ShortOperator = GodZukiSignalOperator.Equal; NC_ShortValue = -1;
+				UseSUSignals = true;   RequireSUSignal = false;  SU_LongOperator = GodZukiSignalOperator.Equal; SU_LongValue = 1;  SU_ShortOperator = GodZukiSignalOperator.Equal; SU_ShortValue = -1;
+				UseNCSignals = true;   RequireNCSignal = false;  NC_LongOperator = GodZukiSignalOperator.Equal; NC_LongValue = 1;  NC_ShortOperator = GodZukiSignalOperator.Equal; NC_ShortValue = -1;
 
 				// Signals — Set 2
 				EnableGroupTriggerSet2 = false; GroupTriggerSet2RequiredCount = 3;
-				G2_UseKOSignals = false; G2_RequireKOSignal = false; G2_KO_LongOperator = GodZukiSignalOperator.Equal; G2_KO_LongValue = 1;  G2_KO_ShortOperator = GodZukiSignalOperator.Equal; G2_KO_ShortValue = -1;
+				G2_UseKOSignals = true;  G2_RequireKOSignal = false; G2_KO_LongOperator = GodZukiSignalOperator.Equal; G2_KO_LongValue = 1;  G2_KO_ShortOperator = GodZukiSignalOperator.Equal; G2_KO_ShortValue = -1;
 				G2_UsePASignals = true;  G2_RequirePASignal = false; G2_PA_LongOperator = GodZukiSignalOperator.Equal; G2_PA_LongValue = 3;  G2_PA_ShortOperator = GodZukiSignalOperator.Equal; G2_PA_ShortValue = -3;
 				G2_UseTHSignals = true;  G2_RequireTHSignal = false; G2_TH_LongOperator = GodZukiSignalOperator.Equal; G2_TH_LongValue = 3;  G2_TH_ShortOperator = GodZukiSignalOperator.Equal; G2_TH_ShortValue = -3;
 				G2_UseSJSignals = true;  G2_RequireSJSignal = false; G2_SJ_LongOperator = GodZukiSignalOperator.Equal; G2_SJ_LongValue = 1;  G2_SJ_ShortOperator = GodZukiSignalOperator.Equal; G2_SJ_ShortValue = -1;
-				G2_UseSUSignals = false; G2_RequireSUSignal = false; G2_SU_LongOperator = GodZukiSignalOperator.Equal; G2_SU_LongValue = 1;  G2_SU_ShortOperator = GodZukiSignalOperator.Equal; G2_SU_ShortValue = -1;
-				G2_UseNCSignals = false; G2_RequireNCSignal = false; G2_NC_LongOperator = GodZukiSignalOperator.Equal; G2_NC_LongValue = 1;  G2_NC_ShortOperator = GodZukiSignalOperator.Equal; G2_NC_ShortValue = -1;
+				G2_UseSUSignals = true;  G2_RequireSUSignal = false; G2_SU_LongOperator = GodZukiSignalOperator.Equal; G2_SU_LongValue = 1;  G2_SU_ShortOperator = GodZukiSignalOperator.Equal; G2_SU_ShortValue = -1;
+				G2_UseNCSignals = true;  G2_RequireNCSignal = false; G2_NC_LongOperator = GodZukiSignalOperator.Equal; G2_NC_LongValue = 1;  G2_NC_ShortOperator = GodZukiSignalOperator.Equal; G2_NC_ShortValue = -1;
 
 				// Filters
 				EnableEmaFilter = false; EmaShortPeriod = 21; EmaLongPeriod = 50;
@@ -415,7 +419,7 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 					&&(ko!=0||pa!=0||th!=0||sj!=0||su!=0||nc!=0||s1Out!=0||s2Out!=0))
 					WriteSignalLogRow(s1Out,s2Out,emaOut,ko,pa,th,sj,su,nc);
 
-				BuildHudSnapshot(ko,pa,th,sj,su,nc,set1,set2);
+				BuildHudSnapshot(ko,pa,th,sj,su,nc,set1,set2,s1Vis,s2Vis);
 				RequestHudRepaint();
 			}
 			catch (Exception ex) { if (EnableDebug) Print(string.Format("[{0}] OnBarUpdate ERROR | {1}",Name,ex.Message)); }
@@ -615,7 +619,7 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 		private string CsvSafe(string v) { if(v==null)v=string.Empty; return "\""+v.Replace("\"","\"\"")+"\"";}
 
 		// ── HUD snapshot ──────────────────────────────────────────────────────────
-		private void BuildHudSnapshot(int ko,int pa,int th,int sj,int su,int nc,GroupTriggerResult set1,GroupTriggerResult set2)
+		private void BuildHudSnapshot(int ko,int pa,int th,int sj,int su,int nc,GroupTriggerResult set1,GroupTriggerResult set2,int s1Vis,int s2Vis)
 		{
 			try
 			{
@@ -624,24 +628,47 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 				if (EnableEmaFilter&&_emaShortFilter!=null&&_emaLongFilter!=null&&CurrentBar>=Math.Max(EmaShortPeriod,EmaLongPeriod))
 				{
 					bool bull=_emaShortFilter[0]>_emaLongFilter[0]; _hudEmaBullish=bull;
-					_hudEmaLine=string.Format("EMA: ON   {0}={1:F2} / {2}={3:F2}",
+					_hudEmaLine=string.Format("EMA Cross: ON   {0}={1:F2} / {2}={3:F2}",
 						EmaShortPeriod, _emaShortFilter[0], EmaLongPeriod, _emaLongFilter[0]);
 				}
-				else { _hudEmaLine=EnableEmaFilter?"EMA: ON   (warming up)":"EMA: OFF"; _hudEmaBullish=true; }
+				else { _hudEmaLine=EnableEmaFilter?"EMA Cross: ON   (warming up)":"EMA Cross: OFF"; _hudEmaBullish=true; }
 
-				// Set1 config row
-				int s1Count=CountEnabledSignals();
-				_hudSet1On = s1Count>0 && IsPrimaryGroupModeActive();
-				_hudSet1ConfigLine = _hudSet1On
-					? string.Format("Set1: ON   Req:{0}/{1}", GroupTriggerSet1RequiredCount, s1Count)
-					: "Set1: OFF";
+				// Set1 config row — "Set1 Enabled R:X/Y: KO, PA, TH, SJ, SU, NC" format
+				var s1Sigs=new List<string>();
+				if(UseKOSignals)s1Sigs.Add((RequireKOSignal?"+":"")+"KO");
+				if(UsePASignals)s1Sigs.Add((RequirePASignal?"+":"")+"PA");
+				if(UseTHSignals)s1Sigs.Add((RequireTHSignal?"+":"")+"TH");
+				if(UseSJSignals)s1Sigs.Add((RequireSJSignal?"+":"")+"SJ");
+				if(UseSUSignals)s1Sigs.Add((RequireSUSignal?"+":"")+"SU");
+				if(UseNCSignals)s1Sigs.Add((RequireNCSignal?"+":"")+"NC");
+				_hudS1Warning = s1Sigs.Count>0 && GroupTriggerSet1RequiredCount>s1Sigs.Count;
+				_hudSet1On    = s1Sigs.Count>0 && IsPrimaryGroupModeActive();
+				_hudS1State   = s1Vis;
+				string s1Body = s1Sigs.Count>0
+					? "Set1 Enabled R:"+GroupTriggerSet1RequiredCount+"/"+s1Sigs.Count+": "+string.Join(", ",s1Sigs)
+					: "Set1 Enabled: None";
+				_hudSet1ConfigLine = _hudS1Warning ? "[!] "+s1Body : s1Body;
 
 				// Set2 config row
-				int s2Count=CountEnabledGroupTriggerSet2Signals();
-				_hudSet2On = EnableGroupTriggerSet2 && s2Count>0 && IsSecondaryGroupModeActive();
-				_hudSet2ConfigLine = _hudSet2On
-					? string.Format("Set2: ON   Req:{0}/{1}", GroupTriggerSet2RequiredCount, s2Count)
+				var s2Sigs=new List<string>();
+				if(EnableGroupTriggerSet2)
+				{
+					if(G2_UseKOSignals)s2Sigs.Add((G2_RequireKOSignal?"+":"")+"KO");
+					if(G2_UsePASignals)s2Sigs.Add((G2_RequirePASignal?"+":"")+"PA");
+					if(G2_UseTHSignals)s2Sigs.Add((G2_RequireTHSignal?"+":"")+"TH");
+					if(G2_UseSJSignals)s2Sigs.Add((G2_RequireSJSignal?"+":"")+"SJ");
+					if(G2_UseSUSignals)s2Sigs.Add((G2_RequireSUSignal?"+":"")+"SU");
+					if(G2_UseNCSignals)s2Sigs.Add((G2_RequireNCSignal?"+":"")+"NC");
+				}
+				_hudS2Warning = EnableGroupTriggerSet2 && s2Sigs.Count>0 && GroupTriggerSet2RequiredCount>s2Sigs.Count;
+				_hudSet2On    = EnableGroupTriggerSet2 && s2Sigs.Count>0 && IsSecondaryGroupModeActive();
+				_hudS2State   = s2Vis;
+				string s2Body = EnableGroupTriggerSet2
+					? (s2Sigs.Count>0
+						? "Set2 Enabled R:"+GroupTriggerSet2RequiredCount+"/"+s2Sigs.Count+": "+string.Join(", ",s2Sigs)
+						: "Set2 Enabled: None")
 					: "Set2: OFF";
+				_hudSet2ConfigLine = _hudS2Warning ? "[!] "+s2Body : s2Body;
 			}
 			catch(Exception ex){if(EnableDebug)Print(string.Format("[{0}] HUD snap error: {1}",Name,ex.Message));}
 		}
@@ -683,8 +710,8 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 			{
 				string title=_hudTitle, ver=_hudVersion, emaLine=_hudEmaLine;
 				bool emaEn=_hudEmaEnabled, emaBull=_hudEmaBullish;
-				string s1cfg=_hudSet1ConfigLine; bool s1on=_hudSet1On;
-				string s2cfg=_hudSet2ConfigLine; bool s2on=_hudSet2On;
+				string s1cfg=_hudSet1ConfigLine; bool s1on=_hudSet1On; int s1st=_hudS1State; bool s1warn=_hudS1Warning;
+				string s2cfg=_hudSet2ConfigLine; bool s2on=_hudSet2On; int s2st=_hudS2State; bool s2warn=_hudS2Warning;
 				EnsureDashboardFonts();
 				const float PAD=8f,SEP_H=4f,MARGIN_X=18f,MARGIN_Y=35f,RIGHT_PAD=80f;
 				float RH=HudRowHeight(),TH=HudTitleHeight(),BW=HudBoxWidth();
@@ -709,10 +736,12 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 				// EMA row — green=bullish, red=bearish, dim=off
 				SharpDX.Direct2D1.SolidColorBrush emaBrush = emaEn ? (emaBull ? _bTextGreen : _bTextRed) : _bTextDim;
 				DrawHudLine(emaLine, x, y, w, RH, emaBrush, _dashFormat); y += RH;
-				// Set1 row — white=active, dim=off
-				DrawHudLine(s1cfg, x, y, w, RH, s1on ? _bTextWhite : _bTextDim, _dashFormat); y += RH;
-				// Set2 row — white=active, dim=off
-				DrawHudLine(s2cfg, x, y, w, RH, s2on ? _bTextWhite : _bTextDim, _dashFormat);
+				// Set1 row — yellow=[!]warning  green=long  red=short  white=watching  dim=off
+				var s1Brush = s1warn?_bTextYellow:s1st>0?_bTextGreen:s1st<0?_bTextRed:s1on?_bTextWhite:_bTextDim;
+				DrawHudLine(s1cfg, x, y, w, RH, s1Brush, _dashFormat); y += RH;
+				// Set2 row — same colour logic
+				var s2Brush = s2warn?_bTextYellow:s2st>0?_bTextGreen:s2st<0?_bTextRed:s2on?_bTextWhite:_bTextDim;
+				DrawHudLine(s2cfg, x, y, w, RH, s2Brush, _dashFormat);
 			}
 			catch(Exception ex){if(_hudErrors<3){_hudErrors++;if(EnableDebug)Print(string.Format("[{0}] HUD render err: {1}",Name,ex.Message));}}
 		}
@@ -730,6 +759,7 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 			_bTextDim    =new SharpDX.Direct2D1.SolidColorBrush(RenderTarget,new Color4(0.65f,0.65f,0.70f,1f));
 			_bTextGreen  =new SharpDX.Direct2D1.SolidColorBrush(RenderTarget,new Color4(0.20f,1.00f,0.30f,1f));
 			_bTextRed    =new SharpDX.Direct2D1.SolidColorBrush(RenderTarget,new Color4(1.00f,0.30f,0.30f,1f));
+			_bTextYellow =new SharpDX.Direct2D1.SolidColorBrush(RenderTarget,new Color4(1.00f,0.90f,0.10f,1f));
 			_bTextCyan   =new SharpDX.Direct2D1.SolidColorBrush(RenderTarget,new Color4(0.30f,0.85f,1.00f,1f));
 			_bBackground =new SharpDX.Direct2D1.SolidColorBrush(RenderTarget,new Color4(0.05f,0.06f,0.10f,0.86f));
 			_bBorder     =new SharpDX.Direct2D1.SolidColorBrush(RenderTarget,new Color4(0.35f,0.40f,0.55f,1.00f));
@@ -741,7 +771,7 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 			_dxInitialized=false;
 			void D<T>(ref T r) where T:class,IDisposable{if(r!=null){try{r.Dispose();}catch{}}r=null;}
 			D(ref _dashFormat); D(ref _dashTitleFormat);
-			D(ref _bTextWhite); D(ref _bTextDim); D(ref _bTextGreen); D(ref _bTextRed); D(ref _bTextCyan); D(ref _bBackground); D(ref _bBorder);
+			D(ref _bTextWhite); D(ref _bTextDim); D(ref _bTextGreen); D(ref _bTextRed); D(ref _bTextYellow); D(ref _bTextCyan); D(ref _bBackground); D(ref _bBorder);
 		}
 
 		private void EnsureDashboardFonts()
@@ -763,7 +793,7 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 
 		private float HudBodyFontSize()  {switch(DashboardSize){case GodZukiHudSize.Tiny:return 10f;case GodZukiHudSize.Small:return 11f;case GodZukiHudSize.Large:return 14f;case GodZukiHudSize.Huge:return 17f;default:return 12f;}}
 		private float HudTitleFontSize() {switch(DashboardSize){case GodZukiHudSize.Tiny:return 12f;case GodZukiHudSize.Small:return 13f;case GodZukiHudSize.Large:return 17f;case GodZukiHudSize.Huge:return 21f;default:return 14f;}}
-		private float HudBoxWidth()      {switch(DashboardSize){case GodZukiHudSize.Tiny:return 240f;case GodZukiHudSize.Small:return 270f;case GodZukiHudSize.Large:return 340f;case GodZukiHudSize.Huge:return 410f;default:return 300f;}}
+		private float HudBoxWidth()      {switch(DashboardSize){case GodZukiHudSize.Tiny:return 260f;case GodZukiHudSize.Small:return 295f;case GodZukiHudSize.Large:return 380f;case GodZukiHudSize.Huge:return 460f;default:return 325f;}}
 		private float HudRowHeight()     {switch(DashboardSize){case GodZukiHudSize.Tiny:return 13f;case GodZukiHudSize.Small:return 14f;case GodZukiHudSize.Large:return 19f;case GodZukiHudSize.Huge:return 22f;default:return 16f;}}
 		private float HudTitleHeight()   {switch(DashboardSize){case GodZukiHudSize.Tiny:return 18f;case GodZukiHudSize.Small:return 20f;case GodZukiHudSize.Large:return 25f;case GodZukiHudSize.Huge:return 28f;default:return 22f;}}
 
