@@ -30,6 +30,7 @@ using Brush = System.Windows.Media.Brush;
 using Color = System.Windows.Media.Color;
 using FontStyle = SharpDX.DirectWrite.FontStyle;
 using FontWeight = SharpDX.DirectWrite.FontWeight;
+using Path = System.IO.Path;
 using NewsPrintLocation = NinjaTrader.NinjaScript.Indicators.Playr101.NewsSignals.NewsPrintLocation;
 #endregion
 
@@ -390,6 +391,15 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         private SharpDX.Direct2D1.SolidColorBrush    _bBorder;
         private SharpDX.Direct2D1.SolidColorBrush    _bBorderHot;
 
+        // Template-missing warning overlay. Drawn unconditionally in OnRender —
+        // visible even when ShowDashboard = false or DashboardPosition = Hidden.
+        // Written by the data thread (string is immutable — torn reads are safe).
+        private SharpDX.DirectWrite.TextFormat       _warnFormat;
+        private SharpDX.Direct2D1.SolidColorBrush    _bWarnBg;
+        private SharpDX.Direct2D1.SolidColorBrush    _bWarnText;
+        private SharpDX.Direct2D1.SolidColorBrush    _bWarnBorder;
+        private string _templateWarningText = string.Empty;
+
         // Same-target-skip per AGENTS.md lifecycle defense rule
         // _dxInitialized must gate both the same-target-skip AND the lazy re-init
         // in OnRender — otherwise NT8 firing OnRenderTargetChanged with the same
@@ -478,7 +488,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 Description = "GodZillaKilla — strategy using direct KingOrderBlock/PANAKanal/ThunderZilla/SuperJumpBoost/SumoPullback/NobleCloud child indicator signals.";
                 Name = "GodZillaKilla";
                 StrategyName = Name;
-                _strategyVersion = "1.8.1";
+                _strategyVersion = "1.8.2";
 
                 Author = "Playr101";
                 Credits = "GreyBeard, ninZa.co, RenkoKings, ES, rbro999";
@@ -1108,6 +1118,41 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 if (EnableDebug)
                     Print ($"{Name} entered realtime. ATM mode active.");
 
+                // Template pre-flight: warn at enable time so the user can fix a missing
+                // template before the first signal fires, rather than discovering it during
+                // a missed trade. Does not block enable — the user may intend to fix it
+                // before the session starts.
+                if (OrderMode == OrderManagementMode.AtmStrategy)
+                {
+                    bool atmOk   = ValidateAtmTemplate (AtmStrategy, out string atmPath);
+                    bool martOk  = !EnableMartingaleOnStopLoss
+                                   || ValidateAtmTemplate (MartingaleAtmStrategy, out _);
+
+                    if (!atmOk)
+                    {
+                        string warn = $"'{AtmStrategy}' not found";
+                        if (EnableMartingaleOnStopLoss && !martOk)
+                            warn += $"  |  Martingale: '{MartingaleAtmStrategy}' not found";
+                        _templateWarningText = warn;
+
+                        Print ($"[{Name}] WARNING: ATM template file not found — '{AtmStrategy}' | "
+                            + $"Expected path: {atmPath} | "
+                            + "Entries will be blocked until this template is restored.");
+                    }
+                    else if (EnableMartingaleOnStopLoss && !martOk)
+                    {
+                        _templateWarningText = $"Martingale: '{MartingaleAtmStrategy}' not found";
+                        ValidateAtmTemplate (MartingaleAtmStrategy, out string martPath);
+                        Print ($"[{Name}] WARNING: Martingale ATM template file not found — '{MartingaleAtmStrategy}' | "
+                            + $"Expected path: {martPath} | "
+                            + "Martingale recovery will be blocked until this template is restored.");
+                    }
+                    else
+                    {
+                        _templateWarningText = string.Empty;   // both templates present — clear any prior warning
+                    }
+                }
+
                 if (ChartControl != null && !_uiInitialized)
                     CreateRBroControlPanel ();
 
@@ -1146,6 +1191,24 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 try
                 {
                     UnhookMarkerAccountEvents ();
+                }
+                catch { }
+
+                // Clear ATM state so zombie IDs cannot survive a disable/re-enable cycle.
+                // NT8 reuses the same C# instance across enable/disable; field initializers
+                // do not re-run. Any stale atmStrategyId left here will block the entry guard
+                // on the next Realtime enable (Defense #3 and #8 both fail to evict it because
+                // isAtmStrategyCreated=true but _atmPositionConfirmed=false after the Realtime
+                // reset — the dead zone between the two defenses).
+                try
+                {
+                    atmStrategyId         = string.Empty;
+                    orderId               = string.Empty;
+                    isAtmStrategyCreated  = false;
+                    _atmPositionConfirmed = false;
+                    _atmIdsSetUtc         = DateTime.MinValue;
+                    _templateWarningText  = string.Empty;    // clear overlay on disable
+                    ClearActiveTradeSignalSources ();
                 }
                 catch { }
 
@@ -2177,7 +2240,48 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     }
                     else
                     {
-                        dailyUnrealizedPnL = 0.0;
+                        // isAtmStrategyCreated (callback fired) + ATM flat + position never
+                        // confirmed open = trade lifecycle complete.  The entry filled and the
+                        // ATM closed in under one tick (common in sim with instant fills).
+                        // Without this path the trade is silently dropped: _atmPositionConfirmed
+                        // is never set, so the normal "flat+confirmed" close branch never runs,
+                        // and ClearNormalAtmState (called when NT8 eventually throws) skips
+                        // WriteTradeLogRecord.  Salvage realized PnL here before clearing so the
+                        // trade appears in the CSV log and daily accounting.
+                        if (isAtmStrategyCreated)
+                        {
+                            double fastPnl;
+                            if (TryGetAtmRealizedPnlSafe (atmStrategyId, "Normal/FastClose", out fastPnl)
+                                && !double.IsNaN (fastPnl) && fastPnl != 0.0)
+                            {
+                                lastAtmRealizedPnL = Instrument.MasterInstrument.RoundToTickSize (fastPnl);
+                                totalRealizedPnL   = Math.Round (totalRealizedPnL + lastAtmRealizedPnL, 2);
+                                dailyRealizedPnL   = Math.Round (totalRealizedPnL - sessionStartTotalRealizedPnL, 2);
+                                totalRunningPnL    = Math.Round (totalRealizedPnL + (UseUnrealizedPnl ? dailyUnrealizedPnL : 0.0), 2);
+                                UpdateSignalTrackingOnTradeClose (lastAtmRealizedPnL);
+                                UpdateLastTradeClosedSummary (lastAtmRealizedPnL);
+                                PrintSignalTrackingOnTradeClose (lastAtmRealizedPnL);
+                                WriteTradeLogRecord (atmStrategyId, tickTime, lastAtmRealizedPnL);
+                                Print ($"[{Name}] FAST CLOSE RECOVERED | ATM={atmStrategyId} | PnL={lastAtmRealizedPnL:F2}");
+                            }
+                            else
+                            {
+                                Print ($"[{Name}] FAST CLOSE DISCARDED | ATM={atmStrategyId} | Entry did not fill or PnL unavailable.");
+                            }
+
+                            _tradeMap.TryRemove (atmStrategyId, out _);
+                            ClearActiveTradeSignalSources ();
+                            atmStrategyId        = string.Empty;
+                            orderId              = string.Empty;
+                            isAtmStrategyCreated = false;
+                            _atmPositionConfirmed = false;
+                            _atmIdsSetUtc        = DateTime.MinValue;
+                            dailyUnrealizedPnL   = 0.0;
+                        }
+                        else
+                        {
+                            dailyUnrealizedPnL = 0.0;
+                        }
                     }
                 }
             }
@@ -2647,6 +2751,18 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             _bBorder = new SharpDX.Direct2D1.SolidColorBrush (RenderTarget, new Color4 (0.35f, 0.40f, 0.55f, 1.00f));
             _bBorderHot = new SharpDX.Direct2D1.SolidColorBrush (RenderTarget, new Color4 (1.00f, 0.55f, 0.10f, 1.00f));
 
+            // Warning overlay resources — created unconditionally so the overlay
+            // renders even when ShowDashboard is false.
+            var dwf = NinjaTrader.Core.Globals.DirectWriteFactory;
+            _warnFormat = new SharpDX.DirectWrite.TextFormat (
+                dwf, "Segoe UI", FontWeight.Bold, FontStyle.Normal, 18f);
+            _warnFormat.WordWrapping  = SharpDX.DirectWrite.WordWrapping.NoWrap;
+            _warnFormat.TextAlignment = SharpDX.DirectWrite.TextAlignment.Center;
+            _warnFormat.ParagraphAlignment = SharpDX.DirectWrite.ParagraphAlignment.Center;
+            _bWarnBg     = new SharpDX.Direct2D1.SolidColorBrush (RenderTarget, new Color4 (0.55f, 0.03f, 0.03f, 0.92f));
+            _bWarnText   = new SharpDX.Direct2D1.SolidColorBrush (RenderTarget, new Color4 (1.00f, 0.95f, 0.30f, 1.00f));
+            _bWarnBorder = new SharpDX.Direct2D1.SolidColorBrush (RenderTarget, new Color4 (1.00f, 0.25f, 0.25f, 1.00f));
+
             _dxInitialized = true;
         }
 
@@ -2761,6 +2877,86 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 }
             }
             catch { _bBorderHot = null; }
+            try
+            {
+                if (_warnFormat != null)
+                {
+                    _warnFormat.Dispose ();
+                    _warnFormat = null;
+                }
+            }
+            catch { _warnFormat = null; }
+            try
+            {
+                if (_bWarnBg != null)
+                {
+                    _bWarnBg.Dispose ();
+                    _bWarnBg = null;
+                }
+            }
+            catch { _bWarnBg = null; }
+            try
+            {
+                if (_bWarnText != null)
+                {
+                    _bWarnText.Dispose ();
+                    _bWarnText = null;
+                }
+            }
+            catch { _bWarnText = null; }
+            try
+            {
+                if (_bWarnBorder != null)
+                {
+                    _bWarnBorder.Dispose ();
+                    _bWarnBorder = null;
+                }
+            }
+            catch { _bWarnBorder = null; }
+        }
+
+        private void DrawTemplateMissingWarning (ChartControl chartControl, ChartScale chartScale)
+        {
+            string msg = _templateWarningText;  // immutable snapshot — safe cross-thread read
+
+            if (string.IsNullOrEmpty (msg))
+                return;
+
+            if (_warnFormat == null || _bWarnBg == null || _bWarnText == null || _bWarnBorder == null)
+                return;
+
+            try
+            {
+                const float BOX_W   = 580f;
+                const float BOX_H   = 74f;
+                const float BORDER  = 2.5f;
+                const float LINE_H  = 26f;   // approx height per text row at 18pt
+                const float PAD     = 10f;
+
+                float rtW = (float) RenderTarget.Size.Width;
+                float rtH = (float) RenderTarget.Size.Height;
+
+                // Position: centered horizontally, 38% from top (just above mid)
+                float boxX = (rtW - BOX_W) * 0.5f;
+                float boxY = rtH * 0.38f;
+
+                var bgRect = new SharpDX.RectangleF (boxX, boxY, BOX_W, BOX_H);
+
+                // Background fill
+                RenderTarget.FillRectangle (bgRect, _bWarnBg);
+
+                // Border
+                RenderTarget.DrawRectangle (bgRect, _bWarnBorder, BORDER);
+
+                // Line 1: "⚠  ATM TEMPLATE MISSING"
+                var line1Rect = new SharpDX.RectangleF (boxX + PAD, boxY + PAD, BOX_W - PAD * 2f, LINE_H);
+                RenderTarget.DrawText ("⚠  ATM TEMPLATE MISSING", _warnFormat, line1Rect, _bWarnText);
+
+                // Line 2: the specific template name(s)
+                var line2Rect = new SharpDX.RectangleF (boxX + PAD, boxY + PAD + LINE_H + 4f, BOX_W - PAD * 2f, LINE_H);
+                RenderTarget.DrawText (msg, _warnFormat, line2Rect, _bWarnText);
+            }
+            catch { }
         }
 
         // OnRender — UI thread. NEVER touch bar series, Position, ATM APIs here
@@ -2776,11 +2972,8 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             if (RenderTarget == null)
                 return;
 
-            // Stability-mode short-circuit: skip if dashboard is disabled
-            if (!ShowDashboard || DashboardPosition == HudCorner.Hidden)
-                return;
-
-            // Eager re-init for SharpDX resources
+            // Lazy-init runs unconditionally — must be before the ShowDashboard guard
+            // so warning overlay resources exist even when the dashboard is hidden.
             if (_dashFormat == null || _bTextWhite == null)
             {
                 try
@@ -2799,6 +2992,14 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 if (_dashFormat == null)
                     return;
             }
+
+            // Template-missing warning overlay — drawn before ShowDashboard check so it
+            // is always visible regardless of dashboard or display settings.
+            DrawTemplateMissingWarning (chartControl, chartScale);
+
+            // Stability-mode short-circuit: skip remainder if dashboard is disabled
+            if (!ShowDashboard || DashboardPosition == HudCorner.Hidden)
+                return;
 
             try
             {
@@ -5409,6 +5610,24 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 return;
             }
 
+            // Template pre-flight: verify the XML file exists before generating any IDs.
+            // AtmStrategyCreate silently fails when the template file is missing, but by
+            // that point orderId and atmStrategyId are already stored — creating a zombie
+            // that blocks all future entries and floods the NT8 trace at tick rate.
+            // Aborting here means no IDs are ever created, so no zombie is possible.
+            if (!ValidateAtmTemplate (AtmStrategy, out string atmTemplatePath))
+            {
+                _templateWarningText = $"'{AtmStrategy}' not found";
+                Print ($"[{Name}] ATM ENTRY BLOCKED | Template file not found — '{AtmStrategy}' | "
+                    + $"Path checked: {atmTemplatePath} | "
+                    + "Restore the template or update the ATM Strategy property.");
+                Alert ("GZK_AtmTemplateMissing", Priority.High,
+                    $"GZK: ATM template '{AtmStrategy}' not found — entries blocked",
+                    "", 1, Brushes.Red, Brushes.White);
+                ClearActiveTradeSignalSources ();
+                return;
+            }
+
             string trigger = BuildSignalTriggerName (useKO, usePA, useTH, useSJ, useSU, useNC, groupSize, groupName);
 
             isAtmStrategyCreated = false;
@@ -5444,7 +5663,24 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 (atmCallbackErrorCode, atmCallBackId) =>
                 {
                     if (atmCallbackErrorCode == ErrorCode.NoError && atmCallBackId == atmStrategyId)
+                    {
                         isAtmStrategyCreated = true;
+                    }
+                    else if (atmCallBackId == atmStrategyId)
+                    {
+                        // NT8 confirmed the create failed (missing template, connectivity,
+                        // etc.). Clear IDs immediately rather than waiting for Defense #3's
+                        // 10-second timeout — the zombie can never become valid.
+                        Print ($"[{Name}] ATM CREATE FAILED (callback) | ErrorCode={atmCallbackErrorCode} | "
+                            + $"atmId={atmStrategyId} | Template={AtmStrategy} | Clearing IDs immediately.");
+                        _tradeMap.TryRemove (atmStrategyId, out _);
+                        atmStrategyId         = string.Empty;
+                        orderId               = string.Empty;
+                        isAtmStrategyCreated  = false;
+                        _atmPositionConfirmed = false;
+                        _atmIdsSetUtc         = DateTime.MinValue;
+                        ClearActiveTradeSignalSources ();
+                    }
                 });
         }
 
@@ -5456,6 +5692,26 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             return ex.Message.IndexOf ("does not exist", StringComparison.OrdinalIgnoreCase) >= 0
                 || ex.Message.IndexOf ("ATM strategy ID", StringComparison.OrdinalIgnoreCase) >= 0
                 || ex.Message.IndexOf ("Order ID", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        /// <summary>
+        /// Returns true if the ATM template XML file exists on disk.
+        /// Constructs the full path from NT8's UserDataDir so the resolved
+        /// path can be included in error messages for easy diagnosis.
+        /// </summary>
+        private bool ValidateAtmTemplate (string templateName, out string resolvedPath)
+        {
+            resolvedPath = string.Empty;
+
+            if (string.IsNullOrWhiteSpace (templateName))
+                return false;
+
+            resolvedPath = System.IO.Path.Combine (
+                NinjaTrader.Core.Globals.UserDataDir,
+                "templates", "AtmStrategy",
+                templateName + ".xml");
+
+            return System.IO.File.Exists (resolvedPath);
         }
 
         private bool TryGetAtmEntryOrderStatusSafe (ref string entryOrderId, string label, out string[] status)
@@ -5471,8 +5727,17 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             {
                 status = GetAtmStrategyEntryOrderStatus (id);
 
+                // NT8 returns null/empty (without throwing) when the order ID no longer
+                // exists in its registry — the order was cleaned up before we polled it.
+                // Clear the ID immediately to stop the per-tick NT8 "does not exist" log
+                // flood.  The "flat + never confirmed" ATM branch handles PnL accounting
+                // for the trade lifecycle in this case.
                 if (status == null || status.Length == 0)
+                {
+                    Print ($"[{Name}] STALE ATM ENTRY ORDER ID CLEARED | Label={label} | OrderId={id} | NT8 returned no status");
+                    entryOrderId = string.Empty;
                     return false;
+                }
 
                 return true;
             }
@@ -5708,6 +5973,22 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 return;
             }
 
+            // Template pre-flight: same zombie-prevention logic as SubmitAtmEntry.
+            // Martingale fires after a loss — a blocked martingale leaves the position
+            // unhedged, so the alert here is especially important.
+            if (!ValidateAtmTemplate (MartingaleAtmStrategy, out string martTemplatePath))
+            {
+                _templateWarningText = $"Martingale: '{MartingaleAtmStrategy}' not found";
+                Print ($"[{Name}] MARTINGALE BLOCKED | Template file not found — '{MartingaleAtmStrategy}' | "
+                    + $"Path checked: {martTemplatePath} | "
+                    + "Restore the template or update the Martingale ATM Strategy property.");
+                Alert ("GZK_MartingaleTemplateMissing", Priority.High,
+                    $"GZK: Martingale template '{MartingaleAtmStrategy}' not found — recovery blocked",
+                    "", 1, Brushes.Red, Brushes.White);
+                ResetMartingaleRecovery ();
+                return;
+            }
+
             bool isLong = direction == MarketPosition.Long;
 
             martingaleRecoveryActive = true;
@@ -5734,7 +6015,21 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 (atmCallbackErrorCode, atmCallBackId) =>
                 {
                     if (atmCallbackErrorCode == ErrorCode.NoError && atmCallBackId == martingaleAtmStrategyId)
+                    {
                         martingaleAtmStrategyCreated = true;
+                    }
+                    else if (atmCallBackId == martingaleAtmStrategyId)
+                    {
+                        // Martingale create failed — clear IDs immediately.
+                        // Martingale fires after a loss; a failed create leaves the account
+                        // unhedged. Clearing here lets the caller retry on the next signal
+                        // once the template is restored, rather than waiting 10s for
+                        // Defense #3 to evict the stale martingale IDs.
+                        Print ($"[{Name}] MARTINGALE ATM CREATE FAILED (callback) | ErrorCode={atmCallbackErrorCode} | "
+                            + $"martingaleAtmId={martingaleAtmStrategyId} | Template={MartingaleAtmStrategy} | Clearing IDs immediately.");
+                        _tradeMap.TryRemove (martingaleAtmStrategyId, out _);
+                        ResetMartingaleRecovery ();
+                    }
                 });
         }
 
@@ -5908,6 +6203,36 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     isAtmStrategyCreated = false;
                     _atmPositionConfirmed = false;
                     _atmIdsSetUtc = DateTime.MinValue;
+                    ClearActiveTradeSignalSources ();
+                }
+                else if (isAtmStrategyCreated && !_atmPositionConfirmed)
+                {
+                    // Defense #9: zombie ID in the dead zone between Defense #3 and Defense #8.
+                    //
+                    // State: isAtmStrategyCreated=true (ATM callback confirmed), but
+                    // _atmPositionConfirmed=false (reset by State.Realtime on re-enable).
+                    // Neither Defense #3 (requires !isAtmStrategyCreated) nor Defense #8
+                    // (requires _atmPositionConfirmed) can evict this ID. The ATM no longer
+                    // exists in NT8 and the account is flat — the trade closed while the
+                    // strategy was disabled and GZK never detected it.
+                    //
+                    // Root cause observed: May 28 trade on LFE closed normally; strategy
+                    // disabled before the next tick cleared atmStrategyId; re-enabled May 29;
+                    // _atmPositionConfirmed was reset to false in Realtime but atmStrategyId
+                    // was not, leaving a zombie that blocked the 06:35 signal entry.
+                    //
+                    // Primary fix is clearing in State.Terminated; this is belt-and-suspenders
+                    // in case Terminated cleanup does not run (crash, NT8 internal error, etc.).
+                    Print ($"[{Name}] STALE ATM IDS CLEARED (Defense #9 — zombie from prior session) — "
+                        + $"atmId={atmStrategyId} orderId={orderId} "
+                        + $"isAtmStrategyCreated=true _atmPositionConfirmed=false. "
+                        + $"ATM no longer exists and account is flat. Clearing to allow new entries.");
+                    _tradeMap.TryRemove (atmStrategyId, out _);
+                    atmStrategyId         = string.Empty;
+                    orderId               = string.Empty;
+                    isAtmStrategyCreated  = false;
+                    _atmPositionConfirmed = false;
+                    _atmIdsSetUtc         = DateTime.MinValue;
                     ClearActiveTradeSignalSources ();
                 }
             }

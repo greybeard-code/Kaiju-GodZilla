@@ -1,6 +1,6 @@
 # GodZillaKilla — ATM Trading Strategy
 
-**Version:** 1.8
+**Version:** 1.9
 **Namespace:** `NinjaTrader.NinjaScript.Strategies.Playr101`
 **Author:** Playr101
 **Credits:** GreyBeard, ninZa.co, RenkoKings, ES, rbro112
@@ -13,6 +13,7 @@ GodZillaKilla is a NinjaTrader 8 strategy that reads signals from the six GodZil
 
 | Version | Summary |
 |---|---|
+| **1.9** | **ATM reliability hardening.** Defense #9 added: evicts zombie ATM IDs in the dead zone where `isAtmStrategyCreated=true` but `_atmPositionConfirmed=false` (neither Defense #3 nor #8 could fire). `State.Terminated` now clears all ATM fields so stale IDs cannot survive a disable/re-enable cycle. ATM template pre-flight validation added: `ValidateAtmTemplate()` checks the template XML file exists on disk before any IDs are generated — a missing template logs a warning at enable time, blocks the entry cleanly (no zombie IDs created), fires a chart `Alert`, and draws a centered on-chart overlay visible even when the dashboard or control panel are hidden. Martingale template validated independently with elevated alert copy ("recovery blocked"). `AtmStrategyCreate` callback extended to handle non-`NoError` codes: clears IDs immediately on failure rather than waiting for Defense #3's 10-second timeout. |
 | **1.8** | Control panel visual overhaul to "noble" dark navy style (matching Whisky). Gradient+glow title text, SVG pill minimize button, custom ControlTemplate buttons with hover/press effects. `ControlPanelSize` property added (`Large`/`Medium`/`Small`/`Minimized` = 100%/75%/50%/title-only). Double-click cycles all four states; pill button toggles `Minimized` ↔ `Large`. CSV log filename now uses `Time[0]` (bar time) instead of `DateTime.Now`, so replay/playback sessions produce correctly dated files. |
 | **1.7.4** | Control panel converted to floating draggable panel (Whisky style). Title bar drag to reposition; double-click title bar cycles scale (100% → 75% → 50%); `▼`/`▶` minimize button collapses body to title bar only. Account name added below Instrument. `ControlPanelLeft`/`ControlPanelTop` properties persist position across chart reloads. Dashboard Display properties reordered: HUD settings first, control panel settings at bottom. |
 | **1.7.3** | Per-indicator **Require** flags added for both Set 1 and Set 2. When a `Require` flag is enabled, that indicator must be among the signals that fired in the trigger direction — a count that reaches Required Count without the required indicator does not trigger. Defaults to false (no change to existing behavior). HUD signal tracking split into two lines: `Set1 Enabled:` and `Set2 Enabled:` (Set 2 line hidden when Set 2 is disabled). Required indicators are prefixed with `+` on both lines. |
@@ -101,7 +102,7 @@ Integrates with `gbNewsSignals` for real-time economic calendar blocking. Config
 
 ## Defense Mechanisms
 
-GodZillaKilla includes eight layered defenses against NT8 lifecycle edge cases:
+GodZillaKilla includes nine layered defenses against NT8 lifecycle edge cases:
 
 | Defense | Trigger | Action |
 |---|---|---|
@@ -113,10 +114,31 @@ GodZillaKilla includes eight layered defenses against NT8 lifecycle edge cases:
 | #6 | Position inherited from prior session | Captured as baseline; PnL calculated from delta |
 | #7 | `TryGetAtmMarketPositionSafe` failure | Falls back to account-level position check |
 | #8 | Mid-trade ATM ID goes stale (HDS bounce) | Writes trade log, flattens at account level, resets all ATM state |
+| #9 | Zombie ATM ID surviving a disable/re-enable cycle | Dead-zone eviction: `isAtmStrategyCreated=true` but `_atmPositionConfirmed=false` — neither #3 nor #8 can fire; #9 clears the ID immediately |
 
 **Defense #8 detail:** Fires inside `EvictStaleAtmIdsIfTimedOut` on every tick. Detects a mismatch between the ATM reporting Flat and the account still holding a position. `WriteTradeLogRecord` is called **before** clearing `_atmPositionConfirmed` — both the normal ATM path and the martingale ATM path are protected. The estimated PnL from `dailyUnrealizedPnL` is used for the forced-close log record.
 
+**Defense #9 detail:** Targets the dead zone that neither #3 nor #8 covers. Root cause: NT8 reuses the same strategy C# instance across disable/re-enable; `State.Terminated` previously did not clear ATM fields; `State.Realtime` resets `_atmPositionConfirmed=false` but not `atmStrategyId`. A trade that closed while the strategy was disabled leaves `isAtmStrategyCreated=true` and a non-empty `atmStrategyId` — blocking the entry guard and flooding the NT8 trace with "does not exist" errors at tick rate. Primary fix is `State.Terminated` clearing all ATM fields; Defense #9 is belt-and-suspenders for cases where `Terminated` does not run (crash, NT8 internal error).
+
 **FlattenEverything reentrancy guard (v1.7.0+):** `_flattenInProgress` flag and `_flattenLock` prevent double-flatten when rapid ticks fire the method concurrently. The inner check inside the lock ensures thread safety under NT8's mixed threading model.
+
+---
+
+## ATM Template Validation
+
+GodZillaKilla validates both the normal and martingale ATM template files at two points:
+
+**At enable (`State.Realtime`):** Both template names are checked against the NT8 templates folder on disk. A missing template:
+- Prints a warning to the NT8 Output window with the full expected file path
+- Sets `_templateWarningText` so the on-chart overlay is shown immediately
+
+**At entry time (before `AtmStrategyCreate`):** If the template file is still missing when a signal fires, the entry is aborted before any IDs are generated. This prevents the zombie ID scenario entirely — no IDs means no polling loop, no trace flood. The chart `Alert` fires at `Priority.High`.
+
+**On-chart overlay:** A centered red warning box is rendered on the chart canvas via SharpDX — visible even when `ShowDashboard = false` or `DashboardPosition = Hidden`. Line 1 always reads `⚠  ATM TEMPLATE MISSING`; Line 2 shows the specific template name(s). The overlay clears automatically when the strategy is disabled (`State.Terminated`) and is suppressed at next enable if the template has been restored.
+
+**`AtmStrategyCreate` callback:** If NT8 reports a non-`NoError` callback code (e.g., file loaded but strategy rejected), IDs are cleared immediately rather than waiting for Defense #3's 10-second timeout.
+
+To restore a missing template: open the NT8 ATM Strategy Manager, recreate the template with the exact name shown in the warning, save it, then disable and re-enable GodZillaKilla.
 
 ---
 
