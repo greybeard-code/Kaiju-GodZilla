@@ -1,6 +1,6 @@
 # GodZuki — Signal Indicator
 
-**Version:** 1.2
+**Version:** 1.2.1
 **Namespace:** `NinjaTrader.NinjaScript.Indicators.GreyBeard`
 
 GodZuki is the pure indicator version of GodZillaKilla. It reads the same six GodZilla Suite sub-indicators, evaluates the same confluence logic, applies the same EMA filter — but executes no trades. Use it to visually monitor signals on any chart, audit historical signal quality, trigger audio alerts, and log signal history to CSV.
@@ -11,6 +11,7 @@ GodZuki is the pure indicator version of GodZillaKilla. It reads the same six Go
 
 | Version | Summary |
 |---|---|
+| **1.2.1** | All 6 signals enabled by default in both Set 1 and Set 2. Set 1 `RequiredCount` default raised 2 → 3 (avoids signal flood with 6/6 on). HUD Set1/Set2 rows now color by live trigger state: green = long firing, red = short firing, white = watching, dim = off, yellow `[!]` = `RequiredCount` exceeds enabled-signal count. Set1/Set2 lines expanded to show full enabled signal list (`R:3/6: KO, PA, TH, SJ, SU, NC`). EMA label renamed to "EMA Cross:". HUD box widths widened to fit longer rows. |
 | **1.2** | Per-indicator **Require** flags added for both Set 1 and Set 2 (`RequireKOSignal`…`RequireNCSignal`, `G2_RequireKOSignal`…`G2_RequireNCSignal`). A required indicator must appear among the signals that fired in the trigger direction; meeting Required Count without it vetoes the trigger. All default to false. Debug print updated: `Signals=[...]` replaced with `Set1=[...]` and `Set2=[...]`; required indicators prefixed with `+`. |
 | 1.1 | Internal release. |
 | **1.0.3** | Indicator null diagnostic — one-time print at realtime with per-indicator load status. Signal reads hardened: outer null guards removed in favor of unified SafeSignalRead error handling across all six signals. |
@@ -92,15 +93,15 @@ When either Set 1 or Set 2 fires, the bar background is highlighted with a confi
 The SharpDX overlay panel shows four fixed rows:
 
 ```
-GodZuki  v1.2
-─────────────────────────────────────
-EMA: ON   21=19843.50 / 50=19856.25    ← green=bullish, red=bearish, dim=off
-Set1: ON   Req:2/3                      ← white=active, dim=off
-Set2: OFF  Req:3/4                      ← dim when disabled
+GodZuki  v1.2.1
+─────────────────────────────────────────────────────────────
+EMA Cross: ON   21=19843.50 / 50=19856.25   ← green=bullish, red=bearish, dim=off
+Set1 Enabled R:3/6: KO, PA, TH, SJ, SU, NC ← green=long, red=short, white=watching, dim=off
+Set2: OFF                                    ← dim when disabled
 ```
 
-- **EMA row** — shows `ON/OFF` status and live price values for each EMA when the filter is enabled; coloured green (bullish) or red (bearish)
-- **Set1/Set2 rows** — show enabled/disabled status and required count threshold (`Req: required/enabled`)
+- **EMA row** — shows `ON/OFF` status and live price values for each EMA when enabled; green (bullish) or red (bearish)
+- **Set1/Set2 rows** — show full enabled-signal list and required count (`R:required/enabled`); live color reflects current trigger state: green = long firing, red = short firing, white = watching (enabled but not triggered), dim = off. Yellow `[!]` prefix when `RequiredCount` exceeds the number of enabled signals.
 
 The box height is fixed at 4 rows — no layout shifting as signals change.
 
