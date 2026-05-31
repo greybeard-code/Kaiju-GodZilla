@@ -1,6 +1,6 @@
 # GodZuki — Signal Indicator
 
-**Version:** 1.2.1
+**Version:** 1.3
 **Namespace:** `NinjaTrader.NinjaScript.Indicators.GreyBeard`
 
 GodZuki is the pure indicator version of GodZillaKilla. It reads the same six GodZilla Suite sub-indicators, evaluates the same confluence logic, applies the same EMA filter — but executes no trades. Use it to visually monitor signals on any chart, audit historical signal quality, trigger audio alerts, and log signal history to CSV.
@@ -11,6 +11,7 @@ GodZuki is the pure indicator version of GodZillaKilla. It reads the same six Go
 
 | Version | Summary |
 |---|---|
+| **1.3** | Data Box expanded from 11 to 18 plots. Both Signal added (1 when S1=1 AND S2=1, -1 when S1=-1 AND S2=-1, 0 otherwise) at position 5. Individual signals split into S1_KO–S1_NC (Set 1 thresholds, raw) and S2_KO–S2_NC (Set 2 thresholds, raw; 0 when Set 2 disabled). EMA Dir moved to position 6. Public accessor properties renamed to `S1KOSignal`…`S1NCSignal`, `S2KOSignal`…`S2NCSignal`, and `BothSignal` added. |
 | **1.2.1** | All 6 signals enabled by default in both Set 1 and Set 2. Set 1 `RequiredCount` default raised 2 → 3 (avoids signal flood with 6/6 on). HUD Set1/Set2 rows now color by live trigger state: green = long firing, red = short firing, white = watching, dim = off, yellow `[!]` = `RequiredCount` exceeds enabled-signal count. Set1/Set2 lines expanded to show full enabled signal list (`R:3/6: KO, PA, TH, SJ, SU, NC`). EMA label renamed to "EMA Cross:". HUD box widths widened to fit longer rows. |
 | **1.2** | Per-indicator **Require** flags added for both Set 1 and Set 2 (`RequireKOSignal`…`RequireNCSignal`, `G2_RequireKOSignal`…`G2_RequireNCSignal`). A required indicator must appear among the signals that fired in the trigger direction; meeting Required Count without it vetoes the trigger. All default to false. Debug print updated: `Signals=[...]` replaced with `Set1=[...]` and `Set2=[...]`; required indicators prefixed with `+`. |
 | 1.1 | Internal release. |
@@ -34,7 +35,7 @@ GodZuki is the pure indicator version of GodZillaKilla. It reads the same six Go
 | Signal visualization | Yes | Yes |
 | Audio alerts | Yes | Yes |
 | CSV logging | Trade log | Signal log |
-| Data Box outputs | No | Yes (11 plots) |
+| Data Box outputs | No | Yes (18 plots) |
 | Public Series outputs | No | Yes |
 | Control panel | Yes | No |
 
@@ -93,7 +94,7 @@ When either Set 1 or Set 2 fires, the bar background is highlighted with a confi
 The SharpDX overlay panel shows four fixed rows:
 
 ```
-GodZuki  v1.2.1
+GodZuki  v1.3
 ─────────────────────────────────────────────────────────────
 EMA Cross: ON   21=19843.50 / 50=19856.25   ← green=bullish, red=bearish, dim=off
 Set1 Enabled R:3/6: KO, PA, TH, SJ, SU, NC ← green=long, red=short, white=watching, dim=off
@@ -112,25 +113,32 @@ Size: `Tiny` / `Small` / `Normal` / `Large` / `Huge`.
 
 ## Data Box
 
-GodZuki registers 11 `AddPlot` entries visible when hovering over any bar:
+GodZuki registers 18 `AddPlot` entries visible when hovering over any bar (`ShowTransparentPlotsInDataBox = true`; signal plots draw no visible chart line):
 
-| Plot | Index | Value | Filter applied? |
-|---|---|---|---|
-| EMA Short | Values[0] | Short EMA price | — |
-| EMA Long | Values[1] | Long EMA price | — |
-| Set1 Signal | Values[2] | −1 / 0 / 1 | Yes (EMA-filtered) |
-| Set2 Signal | Values[3] | −1 / 0 / 1 | Yes (EMA-filtered) |
-| EMA Dir | Values[4] | 1=bullish / −1=bearish / 0=off | — |
-| KO Signal | Values[5] | −1 / 0 / 1 | No (raw) |
-| PA Signal | Values[6] | −1 / 0 / 1 | No (raw) |
-| TH Signal | Values[7] | −1 / 0 / 1 | No (raw) |
-| SJ Signal | Values[8] | −1 / 0 / 1 | No (raw) |
-| SU Signal | Values[9] | −1 / 0 / 1 | No (raw) |
-| NC Signal | Values[10] | −1 / 0 / 1 | No (raw) |
+| # | Plot | Index | Value | Notes |
+|---|---|---|---|---|
+| 1 | EMA Short | Values[0] | Short EMA price | Chart line — DodgerBlue |
+| 2 | EMA Long | Values[1] | Long EMA price | Chart line — HotPink |
+| 3 | EMA Dir | Values[2] | 1=bullish / −1=bearish / 0=off | — |
+| 4 | Set1 Signal | Values[3] | −1 / 0 / 1 | EMA-filtered group result |
+| 5 | Set2 Signal | Values[4] | −1 / 0 / 1 | EMA-filtered group result |
+| 6 | **Both Signal** | Values[5] | −1 / 0 / 1 | 1 when S1=1 AND S2=1; −1 when S1=−1 AND S2=−1; 0 otherwise |
+| 7 | S1_KO Signal | Values[6] | −1 / 0 / 1 | Set 1 threshold, raw (0 if KO disabled) |
+| 8 | S1_PA Signal | Values[7] | −1 / 0 / 1 | Set 1 threshold, raw (0 if PA disabled) |
+| 9 | S1_TH Signal | Values[8] | −1 / 0 / 1 | Set 1 threshold, raw (0 if TH disabled) |
+| 10 | S1_SJ Signal | Values[9] | −1 / 0 / 1 | Set 1 threshold, raw (0 if SJ disabled) |
+| 11 | S1_SU Signal | Values[10] | −1 / 0 / 1 | Set 1 threshold, raw (0 if SU disabled) |
+| 12 | S1_NC Signal | Values[11] | −1 / 0 / 1 | Set 1 threshold, raw (0 if NC disabled) |
+| 13 | S2_KO Signal | Values[12] | −1 / 0 / 1 | Set 2 threshold, raw (0 if Set 2 or KO disabled) |
+| 14 | S2_PA Signal | Values[13] | −1 / 0 / 1 | Set 2 threshold, raw (0 if Set 2 or PA disabled) |
+| 15 | S2_TH Signal | Values[14] | −1 / 0 / 1 | Set 2 threshold, raw (0 if Set 2 or TH disabled) |
+| 16 | S2_SJ Signal | Values[15] | −1 / 0 / 1 | Set 2 threshold, raw (0 if Set 2 or SJ disabled) |
+| 17 | S2_SU Signal | Values[16] | −1 / 0 / 1 | Set 2 threshold, raw (0 if Set 2 or SU disabled) |
+| 18 | S2_NC Signal | Values[17] | −1 / 0 / 1 | Set 2 threshold, raw (0 if Set 2 or NC disabled) |
 
-`ShowTransparentPlotsInDataBox = true` is set so signal plots appear in the Data Box without drawing visible lines on the chart.
+**Set1/Set2 vs individual signals:** Set1 and Set2 reflect the EMA-filtered result — 0 when the EMA filter blocks the group trigger. Individual S1_/S2_ values are always raw computed signals so near-misses remain visible even when the EMA filter suppressed the group trigger.
 
-**Set1/Set2 vs individual signals:** Set1 and Set2 reflect the EMA-filtered result — 0 when the EMA filter blocks the group trigger — matching what arrows show. Individual KO–NC values always show the raw computed signal, so near-misses are visible even when the EMA filter suppressed the group trigger.
+**Both Signal:** Requires both group triggers to agree. With Set 2 disabled, Both Signal is always 0 (there is no second set to agree with).
 
 **Note:** If Set1 or Set2 show non-zero in the Data Box but no arrow appears on the chart, check that `Group: Show Trigger Arrows = true` in the Display properties and that `GroupTriggerBrush` is not set to a transparent colour.
 
@@ -141,24 +149,37 @@ GodZuki registers 11 `AddPlot` entries visible when hovering over any bar:
 All signal plots are exposed as typed public properties for use by external strategies or indicators:
 
 ```csharp
-Series<double> Set1Signal  // Values[2] — EMA-filtered Set 1 group result
-Series<double> Set2Signal  // Values[3] — EMA-filtered Set 2 group result
-Series<double> EmaSignal   // Values[4] — EMA filter direction
-Series<double> KOSignal    // Values[5] — KingOrderBlock raw signal
-Series<double> PASignal    // Values[6] — PANAKanal raw signal
-Series<double> THSignal    // Values[7] — ThunderZilla raw signal
-Series<double> SJSignal    // Values[8] — SuperJumpBoost raw signal
-Series<double> SUSignal    // Values[9] — SumoPullback raw signal
-Series<double> NCSignal    // Values[10] — NobleCloud raw signal
+Series<double> EmaSignal    // Values[2]  — EMA filter direction (1=bullish, −1=bearish, 0=off)
+Series<double> Set1Signal   // Values[3]  — EMA-filtered Set 1 group result
+Series<double> Set2Signal   // Values[4]  — EMA-filtered Set 2 group result
+Series<double> BothSignal   // Values[5]  — 1 when S1=1 AND S2=1; −1 when S1=−1 AND S2=−1
+
+// Set 1 individual signals — Set 1 operator/threshold, raw pre-filter (0 if disabled)
+Series<double> S1KOSignal   // Values[6]  — KingOrderBlock
+Series<double> S1PASignal   // Values[7]  — PANAKanal
+Series<double> S1THSignal   // Values[8]  — ThunderZilla
+Series<double> S1SJSignal   // Values[9]  — SuperJumpBoost
+Series<double> S1SUSignal   // Values[10] — SumoPullback
+Series<double> S1NCSignal   // Values[11] — NobleCloud
+
+// Set 2 individual signals — Set 2 (G2_) operator/threshold, raw pre-filter (0 if Set 2 or signal disabled)
+Series<double> S2KOSignal   // Values[12] — KingOrderBlock
+Series<double> S2PASignal   // Values[13] — PANAKanal
+Series<double> S2THSignal   // Values[14] — ThunderZilla
+Series<double> S2SJSignal   // Values[15] — SuperJumpBoost
+Series<double> S2SUSignal   // Values[16] — SumoPullback
+Series<double> S2NCSignal   // Values[17] — NobleCloud
 ```
 
 **Usage from a consuming strategy:**
 ```csharp
 var gz = GodZuki(/* params */);
-if (gz.Set1Signal[0] == 1)   // Set 1 long trigger this bar
-if (gz.Set2Signal[0] == -1)  // Set 2 short trigger this bar
-if (gz.EmaSignal[0]  == 1)   // EMA filter is bullish
-if (gz.PASignal[1]   == -1)  // PANAKanal was short last bar
+if (gz.Set1Signal[0] == 1)    // Set 1 long trigger this bar
+if (gz.Set2Signal[0] == -1)   // Set 2 short trigger this bar
+if (gz.BothSignal[0] == 1)    // both sets agree long this bar
+if (gz.EmaSignal[0]  == 1)    // EMA filter is bullish
+if (gz.S1PASignal[1] == -1)   // PANAKanal (Set 1 threshold) was short last bar
+if (gz.S2PASignal[0] == -1)   // PANAKanal (Set 2 threshold) is short this bar
 ```
 
 All series support historical lookback via `[n]` indexing.

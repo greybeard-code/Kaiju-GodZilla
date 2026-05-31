@@ -68,7 +68,7 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 		}
 
 		#region Variables
-		private string _version = "1.2.1";
+		private string _version = "1.3";
 
 		private gbKingOrderBlock _king;
 		private gbPANAKanal      _pana;
@@ -123,8 +123,6 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 			{
 				Description = "GodZuki — pure signal indicator. KO/PA/TH/SJ/SU/NC signals with EMA filter, audio alerts, and CSV logging. No trading.";
 				Name        = "GodZuki";
-				_version    = "1.2.1";
-
 				IsOverlay                = true;
 				IsAutoScale              = false;
 				Calculate                = Calculate.OnBarClose;
@@ -138,17 +136,24 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 				AddPlot (new Stroke (Brushes.DodgerBlue, 2), PlotStyle.Line, "EMA Short");
 				AddPlot (new Stroke (Brushes.HotPink,    2), PlotStyle.Line, "EMA Long");
 
-				// Output signal plots (Values[2-10]) — transparent; data box only, no chart line
+				// Output signal plots — transparent; data box only, no chart line
 				// ShowTransparentPlotsInDataBox = true ensures values appear even with transparent brush
-				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "Set1 Signal");  // Values[2]
-				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "Set2 Signal");  // Values[3]
-				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "EMA Dir");      // Values[4]
-				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "KO Signal");    // Values[5]
-				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "PA Signal");    // Values[6]
-				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "TH Signal");    // Values[7]
-				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "SJ Signal");    // Values[8]
-				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "SU Signal");    // Values[9]
-				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "NC Signal");    // Values[10]
+				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "EMA Dir");      // Values[2]
+				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "Set1 Signal");  // Values[3]
+				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "Set2 Signal");  // Values[4]
+				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "Both Signal");  // Values[5] — 1 when S1=1 AND S2=1, -1 when S1=-1 AND S2=-1
+				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "S1_KO Signal"); // Values[6]
+				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "S1_PA Signal"); // Values[7]
+				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "S1_TH Signal"); // Values[8]
+				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "S1_SJ Signal"); // Values[9]
+				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "S1_SU Signal"); // Values[10]
+				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "S1_NC Signal"); // Values[11]
+				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "S2_KO Signal"); // Values[12]
+				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "S2_PA Signal"); // Values[13]
+				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "S2_TH Signal"); // Values[14]
+				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "S2_SJ Signal"); // Values[15]
+				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "S2_SU Signal"); // Values[16]
+				AddPlot (new Stroke (Brushes.Transparent, 1), PlotStyle.Hash, "S2_NC Signal"); // Values[17]
 
 				// Signals — Set 1
 				GroupTriggerSet1RequiredCount = 3;
@@ -400,19 +405,26 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 							? (set1.Long?1:-1) : 0;
 				int s2Out = (set2!=null&&(set2.Long||set2.Short)&&SignalVisualFilterPassed(set2.Long?1:-1))
 							? (set2.Long?1:-1) : 0;
-				Values[2][0]  = s1Out;
-				Values[3][0]  = s2Out;
 				int emaOut = 0;
 				if (EnableEmaFilter&&_emaShortFilter!=null&&_emaLongFilter!=null
 					&&CurrentBar>=Math.Max(EmaShortPeriod,EmaLongPeriod))
 					emaOut = _emaShortFilter[0] > _emaLongFilter[0] ? 1 : -1;
-				Values[4][0]  = emaOut;
-				Values[5][0]  = ko;
-				Values[6][0]  = pa;
-				Values[7][0]  = th;
-				Values[8][0]  = sj;
-				Values[9][0]  = su;
-				Values[10][0] = nc;
+				Values[2][0]  = emaOut;
+				Values[3][0]  = s1Out;
+				Values[4][0]  = s2Out;
+				Values[5][0]  = (s1Out == 1 && s2Out == 1) ? 1 : (s1Out == -1 && s2Out == -1) ? -1 : 0;
+				Values[6][0]  = UseKOSignals ? ko : 0;
+				Values[7][0]  = UsePASignals ? pa : 0;
+				Values[8][0]  = UseTHSignals ? th : 0;
+				Values[9][0]  = UseSJSignals ? sj : 0;
+				Values[10][0] = UseSUSignals ? su : 0;
+				Values[11][0] = UseNCSignals ? nc : 0;
+				Values[12][0] = EnableGroupTriggerSet2 ? ComputeSignal(G2_UseKOSignals,koRaw,G2_KO_LongOperator,G2_KO_LongValue,G2_KO_ShortOperator,G2_KO_ShortValue) : 0;
+				Values[13][0] = EnableGroupTriggerSet2 ? ComputeSignal(G2_UsePASignals,paRaw,G2_PA_LongOperator,G2_PA_LongValue,G2_PA_ShortOperator,G2_PA_ShortValue) : 0;
+				Values[14][0] = EnableGroupTriggerSet2 ? ComputeSignal(G2_UseTHSignals,thRaw,G2_TH_LongOperator,G2_TH_LongValue,G2_TH_ShortOperator,G2_TH_ShortValue) : 0;
+				Values[15][0] = EnableGroupTriggerSet2 ? ComputeSignal(G2_UseSJSignals,sjRaw,G2_SJ_LongOperator,G2_SJ_LongValue,G2_SJ_ShortOperator,G2_SJ_ShortValue) : 0;
+				Values[16][0] = EnableGroupTriggerSet2 ? ComputeSignal(G2_UseSUSignals,suRaw,G2_SU_LongOperator,G2_SU_LongValue,G2_SU_ShortOperator,G2_SU_ShortValue) : 0;
+				Values[17][0] = EnableGroupTriggerSet2 ? ComputeSignal(G2_UseNCSignals,ncRaw,G2_NC_LongOperator,G2_NC_LongValue,G2_NC_ShortOperator,G2_NC_ShortValue) : 0;
 
 				// CSV — one row per bar when any signal is non-zero
 				if (LogEnabled&&_logWriter!=null&&CurrentBar!=_lastLoggedBar
@@ -1363,20 +1375,28 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 		public bool EnableDebug{get;set;}
 
 		// ── Output signal series ──────────────────────────────────────────────────
-		// Values[2-10] drive the Data Box (via ShowTransparentPlotsInDataBox = true)
+		// Values[2-17] drive the Data Box (via ShowTransparentPlotsInDataBox = true)
 		// and are exposed here for programmatic access from strategies.
 		// -1 = short  |  0 = flat / inactive  |  1 = long
-		[Browsable(false)][XmlIgnore] public Series<double> Set1Signal => Values[2];
-		[Browsable(false)][XmlIgnore] public Series<double> Set2Signal => Values[3];
 		// 1 = bullish (short > long) | -1 = bearish | 0 = filter off or warming up
-		[Browsable(false)][XmlIgnore] public Series<double> EmaSignal  => Values[4];
-		// Individual sub-indicator signals (0 when indicator is disabled)
-		[Browsable(false)][XmlIgnore] public Series<double> KOSignal   => Values[5];
-		[Browsable(false)][XmlIgnore] public Series<double> PASignal   => Values[6];
-		[Browsable(false)][XmlIgnore] public Series<double> THSignal   => Values[7];
-		[Browsable(false)][XmlIgnore] public Series<double> SJSignal   => Values[8];
-		[Browsable(false)][XmlIgnore] public Series<double> SUSignal   => Values[9];
-		[Browsable(false)][XmlIgnore] public Series<double> NCSignal   => Values[10];
+		[Browsable(false)][XmlIgnore] public Series<double> EmaSignal   => Values[2];
+		[Browsable(false)][XmlIgnore] public Series<double> Set1Signal  => Values[3];
+		[Browsable(false)][XmlIgnore] public Series<double> Set2Signal  => Values[4];
+		[Browsable(false)][XmlIgnore] public Series<double> BothSignal  => Values[5];
+		// Set1 individual signals (0 when signal is disabled)
+		[Browsable(false)][XmlIgnore] public Series<double> S1KOSignal  => Values[6];
+		[Browsable(false)][XmlIgnore] public Series<double> S1PASignal  => Values[7];
+		[Browsable(false)][XmlIgnore] public Series<double> S1THSignal  => Values[8];
+		[Browsable(false)][XmlIgnore] public Series<double> S1SJSignal  => Values[9];
+		[Browsable(false)][XmlIgnore] public Series<double> S1SUSignal  => Values[10];
+		[Browsable(false)][XmlIgnore] public Series<double> S1NCSignal  => Values[11];
+		// Set2 individual signals (0 when Set2 is disabled or signal is disabled)
+		[Browsable(false)][XmlIgnore] public Series<double> S2KOSignal  => Values[12];
+		[Browsable(false)][XmlIgnore] public Series<double> S2PASignal  => Values[13];
+		[Browsable(false)][XmlIgnore] public Series<double> S2THSignal  => Values[14];
+		[Browsable(false)][XmlIgnore] public Series<double> S2SJSignal  => Values[15];
+		[Browsable(false)][XmlIgnore] public Series<double> S2SUSignal  => Values[16];
+		[Browsable(false)][XmlIgnore] public Series<double> S2NCSignal  => Values[17];
 		#endregion
 	}
 }
