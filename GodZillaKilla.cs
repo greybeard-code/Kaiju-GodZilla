@@ -118,6 +118,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         private string atmStrategyId = string.Empty;
         private string orderId = string.Empty;
         private bool isAtmStrategyCreated = false;
+        private string _pendingAtmSignalTrigger = string.Empty;
 
         // Stale-ATM-ID timeout (defense #3) — when AtmStrategyCreate's confirmation
         // callback never fires (silently rejected), atmStrategyId stays set and every
@@ -238,7 +239,8 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         private DateTime _lastFixedPerfSyncUtc = DateTime.MinValue;
         private bool _fixedPerfSyncRequested = true;
         private const int FIXED_PERF_SYNC_INTERVAL_MS = 500;
-        private DateTime _lastTickUiSyncUtc = DateTime.MinValue;
+        private DateTime _lastTickUiSyncUtc      = DateTime.MinValue;
+        private DateTime _lastPnlDebugPrintUtc   = DateTime.MinValue;
         private const int TICK_UI_SYNC_INTERVAL_MS = 100;
 
         // Rolling drawing-tag cleanup (defense #4) — feedback_nt8_wpf_quota_prevention.md.
@@ -258,6 +260,19 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         private System.Collections.Concurrent.ConcurrentDictionary<string, TradeRecord> _tradeMap
             = new System.Collections.Concurrent.ConcurrentDictionary<string, TradeRecord>();
         private bool _atmPositionConfirmed = false;
+
+        private class AtmOpenTrade
+        {
+            public DateTime       EntryTime;
+            public double         EntryPrice;
+            public int            Quantity;
+            public MarketPosition Direction;
+            public string         SignalTrigger;
+            public string         Instrument;
+            public string         AtmId;
+            public bool           IsMartingale;
+        }
+        private AtmOpenTrade _openAtmTrade = null;
 
         private class TradeRecord
         {
@@ -488,7 +503,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 Description = "GodZillaKilla — strategy using direct KingOrderBlock/PANAKanal/ThunderZilla/SuperJumpBoost/SumoPullback/NobleCloud child indicator signals.";
                 Name = "GodZillaKilla";
                 StrategyName = Name;
-                _strategyVersion = "1.9";
+                _strategyVersion = "1.8.3";
 
                 Author = "Playr101";
                 Credits = "GreyBeard, ninZa.co, RenkoKings, ES, rbro999";
@@ -1096,6 +1111,8 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 }
 
                 _atmPositionConfirmed = false;
+                _openAtmTrade = null;
+                _pendingAtmSignalTrigger = string.Empty;
                 ResetFixedOrderState ();
                 ResetMartingaleRecovery ();
                 ClearPendingSignalEntry ();
@@ -1202,12 +1219,14 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 // reset — the dead zone between the two defenses).
                 try
                 {
-                    atmStrategyId         = string.Empty;
-                    orderId               = string.Empty;
-                    isAtmStrategyCreated  = false;
-                    _atmPositionConfirmed = false;
-                    _atmIdsSetUtc         = DateTime.MinValue;
-                    _templateWarningText  = string.Empty;    // clear overlay on disable
+                    atmStrategyId            = string.Empty;
+                    orderId                  = string.Empty;
+                    isAtmStrategyCreated     = false;
+                    _atmPositionConfirmed    = false;
+                    _atmIdsSetUtc            = DateTime.MinValue;
+                    _openAtmTrade            = null;
+                    _pendingAtmSignalTrigger = string.Empty;
+                    _templateWarningText     = string.Empty;    // clear overlay on disable
                     ClearActiveTradeSignalSources ();
                 }
                 catch { }
@@ -1501,20 +1520,16 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 }
             }
 
-            // 13. ATM Strategy Tracking
-            if (OrderMode == OrderManagementMode.AtmStrategy && isAtmStrategyCreated && orderId.Length > 0)
-            {
-                string[] status;
-                if (TryGetAtmEntryOrderStatusSafe (ref orderId, "Normal", out status) && status != null && status[2] == "Filled")
-                {
-                    CaptureFill (status);
-                    orderId = string.Empty;
-                }
-            }
         }
 
         protected override void OnExecutionUpdate (Execution execution, string executionId, double price, int quantity, MarketPosition marketPosition, string orderId, DateTime time)
         {
+            if (OrderMode == OrderManagementMode.AtmStrategy)
+            {
+                HandleAtmExecution (execution, price, quantity, marketPosition, time);
+                return;
+            }
+
             if (OrderMode != OrderManagementMode.FixedTicks)
                 return;
 
@@ -2145,144 +2160,115 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             }
             else
             {
-                if (orderId.Length > 0)
+                // ATM mode polling — works in Playback, Sim, and Live.
+                // OnExecutionUpdate (HandleAtmExecution) also fires in Sim/Live and sets
+                // _openAtmTrade earlier, making this a no-op in those modes. In Playback,
+                // ATM fills do not fire OnExecutionUpdate so polling is the primary path.
+
+                string pollAtmId = martingaleRecoveryActive && !string.IsNullOrEmpty (martingaleAtmStrategyId)
+                    ? martingaleAtmStrategyId
+                    : atmStrategyId;
+
+                // Step 1 — entry detection: position just opened for a pending ATM
+                if (_openAtmTrade == null && !string.IsNullOrEmpty (pollAtmId))
                 {
-                    string[] status;
+                    Cbi.MarketPosition atmPos = Cbi.MarketPosition.Flat;
+                    try { atmPos = GetAtmStrategyMarketPosition (pollAtmId); } catch { }
 
-                    if (TryGetAtmEntryOrderStatusSafe (ref orderId, "Normal", out status)
-                        && status != null
-                        && status.Length >= 3)
-                    {
-                        if (status[2] == "Filled")
-                        {
-                            CaptureFill (status);
-                            orderId = string.Empty;
-                        }
-                        else if (status[2] == "Cancelled" || status[2] == "Rejected")
-                        {
-                            orderId = string.Empty;
-                            ClearActiveTradeSignalSources ();
-                        }
-                    }
-                }
-
-                if (atmStrategyId.Length > 0)
-                {
-                    Cbi.MarketPosition atmPos;
-
-                    if (!TryGetAtmMarketPositionSafe (ref atmStrategyId, "Normal", out atmPos))
-                    {
-                        ClearNormalAtmState ("Normal ATM ID no longer exists");
-                        dailyUnrealizedPnL = 0.0;
-                        return;
-                    }
+                    if (EnableDebug && _atmIdsSetUtc != DateTime.MinValue && (nowUtc - _atmIdsSetUtc).TotalSeconds <= 5)
+                        Print ($"[{Name}] DIAG:POLL | {tickTime:yyyy-MM-dd HH:mm:ss} | atmId={pollAtmId} | atmPos={atmPos} | isAtmCreated={isAtmStrategyCreated} | age={(nowUtc-_atmIdsSetUtc).TotalSeconds:F1}s");
 
                     if (atmPos != Cbi.MarketPosition.Flat)
                     {
-                        _atmPositionConfirmed = true;
-                        isAtmStrategyCreated = true;
-                        orderId = string.Empty;
-
-                        if (_tradeMap.TryGetValue (atmStrategyId, out TradeRecord rec) && rec.OpenPrice == 0.0)
+                        double fillPx = Closes.Length > 1 ? Closes[1][0] : Close[0];
+                        try
                         {
-                            double avgPrice;
-                            int qty;
-
-                            if (TryGetAtmAveragePriceSafe (atmStrategyId, "Normal", out avgPrice) && avgPrice > 0)
-                            {
-                                rec.OpenPrice = Instrument.MasterInstrument.RoundToTickSize (avgPrice);
-
-                                if (TryGetAtmQuantitySafe (atmStrategyId, "Normal", out qty))
-                                    rec.Qty = qty;
-                            }
+                            double avg = GetAtmStrategyPositionAveragePrice (pollAtmId);
+                            if (avg > 0) fillPx = avg;
                         }
+                        catch { }
 
-                        double unrealized;
+                        int qty = 1;
+                        double qtyRaw = 0;
+                        try { qtyRaw = GetAtmStrategyPositionQuantity (pollAtmId); } catch { }
+                        if (qtyRaw > 0) qty = (int)qtyRaw;
 
-                        if (TryGetAtmUnrealizedPnlSafe (atmStrategyId, "Normal", out unrealized))
-                            normalUnrealizedPnL = Instrument.MasterInstrument.RoundToTickSize (unrealized);
-                        else
-                            normalUnrealizedPnL = 0.0;
+                        MarketPosition dir = atmPos == Cbi.MarketPosition.Long
+                            ? MarketPosition.Long : MarketPosition.Short;
+                        fillPx = Instrument.MasterInstrument.RoundToTickSize (fillPx);
+
+                        _openAtmTrade = new AtmOpenTrade
+                        {
+                            EntryTime     = tickTime,
+                            EntryPrice    = fillPx,
+                            Quantity      = qty,
+                            Direction     = dir,
+                            SignalTrigger = _pendingAtmSignalTrigger,
+                            Instrument    = FormatInstrumentName (),
+                            AtmId         = pollAtmId,
+                            IsMartingale  = martingaleRecoveryActive
+                        };
+                        if (_tradeMap.TryGetValue (pollAtmId, out TradeRecord rec))
+                        {
+                            rec.OpenPrice = fillPx;
+                            rec.Qty       = qty;
+                        }
+                        _atmPositionConfirmed    = true;
+                        isAtmStrategyCreated     = true;
+                        _pendingAtmSignalTrigger = string.Empty;
+                        orderId                  = string.Empty;
+                        Print ($"[{Name}] POLL OPEN | {tickTime:yyyy-MM-dd HH:mm:ss} | {dir} {qty}@{fillPx:F2} | "
+                            + $"ATM={pollAtmId} | Signal={_openAtmTrade.SignalTrigger}");
                     }
-                    else if (_atmPositionConfirmed)
+                }
+
+                // Step 2 — close detection and unrealized PnL
+                if (_openAtmTrade != null)
+                {
+                    Cbi.MarketPosition curPos = Cbi.MarketPosition.Flat;
+                    try { curPos = GetAtmStrategyMarketPosition (_openAtmTrade.AtmId); } catch { }
+                    bool posFlat = curPos == Cbi.MarketPosition.Flat;
+
+                    if (posFlat)
                     {
+                        // Position went flat — trade closed.
+                        // PnL: try ATM API (works live); fall back to price computation (Playback).
+                        double pnl;
                         double atmRealized;
-
-                        if (TryGetAtmRealizedPnlSafe (atmStrategyId, "Normal", out atmRealized) && !double.IsNaN (atmRealized))
-                            lastAtmRealizedPnL = Instrument.MasterInstrument.RoundToTickSize (atmRealized);
+                        if (TryGetAtmRealizedPnlSafe (_openAtmTrade.AtmId, "Poll", out atmRealized)
+                            && atmRealized != 0.0)
+                        {
+                            pnl = Instrument.MasterInstrument.RoundToTickSize (atmRealized);
+                        }
                         else
-                            lastAtmRealizedPnL = 0.0;
+                        {
+                            double exitPx = Closes.Length > 1 ? Closes[1][0] : Close[0];
+                            pnl = ComputeAtmTradePnl (_openAtmTrade.Direction, _openAtmTrade.EntryPrice,
+                                exitPx, _openAtmTrade.Quantity);
+                        }
 
-                        MarketPosition closedDirection = activeTradeDirection;
-                        bool startMartingale = ShouldStartMartingaleRecovery (lastAtmRealizedPnL, closedDirection);
-                        MarketPosition martingaleDirection = startMartingale ? GetOppositeDirection (closedDirection) : MarketPosition.Flat;
+                        Print ($"[{Name}] POLL CLOSE | {tickTime:yyyy-MM-dd HH:mm:ss} | {_openAtmTrade.Direction} "
+                            + $"Entry={_openAtmTrade.EntryPrice:F2} | PnL={pnl:F2}");
 
-                        totalRealizedPnL = Math.Round (totalRealizedPnL + lastAtmRealizedPnL, 2);
-                        dailyRealizedPnL = Math.Round (totalRealizedPnL - sessionStartTotalRealizedPnL, 2);
-                        totalRunningPnL = Math.Round (totalRealizedPnL + (UseUnrealizedPnl ? dailyUnrealizedPnL : 0.0), 2);
-
-                        UpdateSignalTrackingOnTradeClose (lastAtmRealizedPnL);
-                        UpdateLastTradeClosedSummary (lastAtmRealizedPnL);
-                        PrintSignalTrackingOnTradeClose (lastAtmRealizedPnL);
-
-                        WriteTradeLogRecord (atmStrategyId, tickTime, lastAtmRealizedPnL);
-
-                        _tradeMap.TryRemove (atmStrategyId, out _);
-                        ClearActiveTradeSignalSources ();
-                        atmStrategyId = string.Empty;
-                        orderId = string.Empty;
-                        isAtmStrategyCreated = false;
-                        _atmPositionConfirmed = false;
-                        dailyUnrealizedPnL = 0.0;
-
-                        if (startMartingale && martingaleDirection != MarketPosition.Flat)
-                            SubmitMartingaleRecoveryEntry (martingaleDirection);
+                        if (_openAtmTrade.IsMartingale)
+                            ProcessMartingaleAtmTradeClose (pnl, tickTime);
+                        else
+                            ProcessNormalAtmTradeClose (pnl, tickTime);
                     }
-                    else
+                    else if (Closes.Length > 1 && _openAtmTrade.Quantity > 0)
                     {
-                        // isAtmStrategyCreated (callback fired) + ATM flat + position never
-                        // confirmed open = trade lifecycle complete.  The entry filled and the
-                        // ATM closed in under one tick (common in sim with instant fills).
-                        // Without this path the trade is silently dropped: _atmPositionConfirmed
-                        // is never set, so the normal "flat+confirmed" close branch never runs,
-                        // and ClearNormalAtmState (called when NT8 eventually throws) skips
-                        // WriteTradeLogRecord.  Salvage realized PnL here before clearing so the
-                        // trade appears in the CSV log and daily accounting.
-                        if (isAtmStrategyCreated)
-                        {
-                            double fastPnl;
-                            if (TryGetAtmRealizedPnlSafe (atmStrategyId, "Normal/FastClose", out fastPnl)
-                                && !double.IsNaN (fastPnl) && fastPnl != 0.0)
-                            {
-                                lastAtmRealizedPnL = Instrument.MasterInstrument.RoundToTickSize (fastPnl);
-                                totalRealizedPnL   = Math.Round (totalRealizedPnL + lastAtmRealizedPnL, 2);
-                                dailyRealizedPnL   = Math.Round (totalRealizedPnL - sessionStartTotalRealizedPnL, 2);
-                                totalRunningPnL    = Math.Round (totalRealizedPnL + (UseUnrealizedPnl ? dailyUnrealizedPnL : 0.0), 2);
-                                UpdateSignalTrackingOnTradeClose (lastAtmRealizedPnL);
-                                UpdateLastTradeClosedSummary (lastAtmRealizedPnL);
-                                PrintSignalTrackingOnTradeClose (lastAtmRealizedPnL);
-                                WriteTradeLogRecord (atmStrategyId, tickTime, lastAtmRealizedPnL);
-                                Print ($"[{Name}] FAST CLOSE RECOVERED | ATM={atmStrategyId} | PnL={lastAtmRealizedPnL:F2}");
-                            }
-                            else
-                            {
-                                Print ($"[{Name}] FAST CLOSE DISCARDED | ATM={atmStrategyId} | Entry did not fill or PnL unavailable.");
-                            }
-
-                            _tradeMap.TryRemove (atmStrategyId, out _);
-                            ClearActiveTradeSignalSources ();
-                            atmStrategyId        = string.Empty;
-                            orderId              = string.Empty;
-                            isAtmStrategyCreated = false;
-                            _atmPositionConfirmed = false;
-                            _atmIdsSetUtc        = DateTime.MinValue;
-                            dailyUnrealizedPnL   = 0.0;
-                        }
-                        else
-                        {
-                            dailyUnrealizedPnL = 0.0;
-                        }
+                        double currentPx  = Closes[1][0];
+                        double priceDiff  = _openAtmTrade.Direction == MarketPosition.Long
+                            ? currentPx - _openAtmTrade.EntryPrice
+                            : _openAtmTrade.EntryPrice - currentPx;
+                        normalUnrealizedPnL = Math.Round (
+                            priceDiff * Instrument.MasterInstrument.PointValue * _openAtmTrade.Quantity, 2);
+                        normalUnrealizedPnL = AdjustFreshStartInheritedUnrealizedPnl (normalUnrealizedPnL);
                     }
+                }
+                else
+                {
+                    normalUnrealizedPnL = 0.0;
                 }
             }
 
@@ -2312,7 +2298,9 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             double dailyRunningPnL = Math.Round (dailyRealizedPnL + openPnlForTotals, 2);
             double dailyPnlToCheck = dailyRunningPnL;
 
-            if (EnableDebug)
+            if (EnableDebug && (nowUtc - _lastPnlDebugPrintUtc).TotalSeconds >= 5)
+            {
+                _lastPnlDebugPrintUtc = nowUtc;
                 Print ($"{tickTime:yyyy-MM-dd HH:mm:ss} | DAILY PNL CHECK | "
                     + $"Closed={dailyRealizedPnL:F2} | "
                     + $"Open={dailyUnrealizedPnL:F2} | "
@@ -2325,6 +2313,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     + $"LimitHit={dailyLimitHit} | "
                     + $"ATM={atmStrategyId} | "
                     + $"Order={orderId}");
+            }
 
             if (!dailyLimitHit)
             {
@@ -3306,6 +3295,22 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     _suSignalSeries[0] = su;
                 if (_ncSignalSeries != null)
                     _ncSignalSeries[0] = nc;
+
+                // Data Box plots — computed here with pre-visual-filter signal directions
+                {
+                    GroupTriggerResult pg = EvaluatePrimaryGroupTriggerSet (
+                        ko == 1 && UseKOSignals,  pa == 1 && UsePASignals,  th == 1 && UseTHSignals,
+                        sj == 1 && UseSJSignals,  su == 1 && UseSUSignals,  nc == 1 && UseNCSignals,
+                        ko == -1 && UseKOSignals, pa == -1 && UsePASignals, th == -1 && UseTHSignals,
+                        sj == -1 && UseSJSignals, su == -1 && UseSUSignals, nc == -1 && UseNCSignals);
+                    GroupTriggerResult sg = EnableGroupTriggerSet2
+                        ? EvaluateSecondaryGroupTriggerSet (koRaw, paRaw, thRaw, sjRaw, suRaw, ncRaw)
+                        : null;
+
+                    int s1 = pg != null ? (pg.Long ? 1 : pg.Short ? -1 : 0) : 0;
+                    int s2 = sg != null ? (sg.Long ? 1 : sg.Short ? -1 : 0) : 0;
+
+                }
 
                 if (!SignalVisualFilterPassed (ko))
                     ko = 0;
@@ -4595,13 +4600,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             pendingSignalBarTime = Time[0];
 
             if (EnableDebug)
-            {
-                Print ($"{Time[0]:yyyy-MM-dd HH:mm:ss} | SIGNAL BAR CLOSE QUEUED ENTRY | "
-                    + $"SignalBar={pendingSignalBar} | "
-                    + $"Direction={direction} | "
-                    + $"Group={pendingSignalGroupName} | "
-                    + $"GroupSize={pendingSignalGroupSize}");
-            }
+                Print ($"[{Name}] DIAG:QUEUE | {Time[0]:yyyy-MM-dd HH:mm:ss} | Dir={direction} | Group={pendingSignalGroupName} | Mode={OrderMode} | State={State}");
         }
 
         private void ClearPendingSignalEntry ()
@@ -4722,26 +4721,18 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
                 if (EnableDebug && (pendingSignalBlockedTicks == 1 || pendingSignalBlockedTicks % 25 == 0))
                 {
-                    Print ($"{Times[1][0]:yyyy-MM-dd HH:mm:ss} | QUEUED SIGNAL WAITING FOR FLAT/CLEAN STATE | "
-                        + $"BlockedTicks={pendingSignalBlockedTicks} | "
-                        + $"MaxBlockedTicks={PendingSignalMaxBlockedTicks} | "
-                        + $"SignalBar={pendingSignalBar} | "
-                        + $"SignalBarTime={pendingSignalBarTime:yyyy-MM-dd HH:mm:ss} | "
+                    Print ($"[{Name}] DIAG:BLOCKED | {Times[1][0]:yyyy-MM-dd HH:mm:ss} | "
+                        + $"Ticks={pendingSignalBlockedTicks} | "
                         + $"ActiveState={HasActiveEntryState ()} | "
                         + $"PendingOrder={HasPendingEntryOrder ()} | "
-                        + $"TradePosition={GetCurrentTradePosition ()}");
+                        + $"TradePos={GetCurrentTradePosition ()} | "
+                        + $"atmId={atmStrategyId}");
                 }
 
                 if (pendingSignalBlockedTicks >= PendingSignalMaxBlockedTicks)
                 {
                     if (EnableDebug)
-                    {
-                        Print ($"{Times[1][0]:yyyy-MM-dd HH:mm:ss} | QUEUED SIGNAL EXPIRED | "
-                            + $"BlockedTicks={pendingSignalBlockedTicks} | "
-                            + $"SignalBar={pendingSignalBar} | "
-                            + $"SignalBarTime={pendingSignalBarTime:yyyy-MM-dd HH:mm:ss}");
-                    }
-
+                        Print ($"[{Name}] DIAG:EXPIRED | {Times[1][0]:yyyy-MM-dd HH:mm:ss} | Ticks={pendingSignalBlockedTicks} | SignalBarTime={pendingSignalBarTime:yyyy-MM-dd HH:mm:ss}");
                     ClearPendingSignalEntry ();
                 }
 
@@ -5594,6 +5585,9 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
         private void SubmitAtmEntry (bool isLong, bool useKO, bool usePA, bool useTH, bool useSJ, bool useSU, bool useNC, int groupSize, string groupName, string reason)
         {
+            if (EnableDebug)
+                Print ($"[{Name}] DIAG:SUBMIT | {Time[0]:yyyy-MM-dd HH:mm:ss} | Dir={(isLong?"Long":"Short")} | Mode={OrderMode} | State={State} | atmId={atmStrategyId} | orderId={orderId} | Martingale={martingaleRecoveryActive} | Reason={reason}");
+
             if (OrderMode != OrderManagementMode.AtmStrategy)
                 return;
 
@@ -5629,6 +5623,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             }
 
             string trigger = BuildSignalTriggerName (useKO, usePA, useTH, useSJ, useSU, useNC, groupSize, groupName);
+            _pendingAtmSignalTrigger = trigger;
 
             isAtmStrategyCreated = false;
             SetActiveTradeSignalSources (useKO, usePA, useTH, useSJ, useSU, useNC, isLong ? MarketPosition.Long : MarketPosition.Short, groupSize, groupName);
@@ -5649,7 +5644,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             };
 
             if (EnableDebug)
-                Print ($"{Time[0]} | ATM ENTRY SUBMIT | Reason={reason} | Direction={(isLong ? "Long" : "Short")} | Trigger={trigger} | ATM={AtmStrategy}");
+                Print ($"[{Name}] DIAG:ATM_CREATE | {Time[0]:yyyy-MM-dd HH:mm:ss} | Dir={(isLong?"Long":"Short")} | Template={AtmStrategy} | atmId={atmStrategyId} | orderId={orderId}");
 
             AtmStrategyCreate (
                 isLong ? OrderAction.Buy : OrderAction.SellShort,
@@ -5665,6 +5660,8 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     if (atmCallbackErrorCode == ErrorCode.NoError && atmCallBackId == atmStrategyId)
                     {
                         isAtmStrategyCreated = true;
+                        if (EnableDebug)
+                            Print ($"[{Name}] DIAG:ATM_CALLBACK | {DateTime.Now:yyyy-MM-dd HH:mm:ss} | NoError | atmId={atmCallBackId}");
                     }
                     else if (atmCallBackId == atmStrategyId)
                     {
@@ -5869,6 +5866,128 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             }
         }
 
+        // ============================================================
+        //  Execution-based ATM trade lifecycle (works in all modes
+        //  including Playback where ATM callbacks do not fire).
+        // ============================================================
+
+        private void HandleAtmExecution (Execution execution, double price, int quantity,
+            MarketPosition marketPosition, DateTime time)
+        {
+            if (EnableDebug)
+                Print ($"[{Name}] DIAG:EXEC | {time:yyyy-MM-dd HH:mm:ss} | price={price:F2} | qty={quantity} | pos={marketPosition} | orderNull={(execution?.Order == null)} | State={State}");
+            if (execution?.Order == null || quantity <= 0) return;
+            if (State != State.Realtime) return;
+
+            bool isNowFlat = marketPosition == MarketPosition.Flat;
+
+            if (_openAtmTrade == null && !isNowFlat)
+            {
+                // Entry fill — position just opened
+                string atmId = martingaleRecoveryActive ? martingaleAtmStrategyId : atmStrategyId;
+                _openAtmTrade = new AtmOpenTrade
+                {
+                    EntryTime     = time,
+                    EntryPrice    = Instrument.MasterInstrument.RoundToTickSize (price),
+                    Quantity      = quantity,
+                    Direction     = marketPosition,
+                    SignalTrigger = _pendingAtmSignalTrigger,
+                    Instrument    = FormatInstrumentName (),
+                    AtmId         = atmId,
+                    IsMartingale  = martingaleRecoveryActive
+                };
+                if (_tradeMap.TryGetValue (atmId, out TradeRecord rec))
+                {
+                    rec.OpenPrice = _openAtmTrade.EntryPrice;
+                    rec.Qty       = quantity;
+                }
+                _atmPositionConfirmed    = true;
+                isAtmStrategyCreated     = true;
+                _pendingAtmSignalTrigger = string.Empty;
+                orderId                  = string.Empty;
+                Print ($"[{Name}] TRADE OPEN | {time:yyyy-MM-dd HH:mm:ss} | {marketPosition} {quantity}@{price:F2} | "
+                    + $"ATM={atmId} | Signal={_openAtmTrade.SignalTrigger}");
+            }
+            else if (_openAtmTrade != null && !isNowFlat && _openAtmTrade.Direction == marketPosition)
+            {
+                // Scale-in: additional fill in same direction — average the entry price
+                double totalCost          = _openAtmTrade.EntryPrice * _openAtmTrade.Quantity + price * quantity;
+                _openAtmTrade.Quantity   += quantity;
+                _openAtmTrade.EntryPrice  = Instrument.MasterInstrument.RoundToTickSize (
+                    totalCost / _openAtmTrade.Quantity);
+                if (_tradeMap.TryGetValue (_openAtmTrade.AtmId, out TradeRecord rec2))
+                {
+                    rec2.OpenPrice = _openAtmTrade.EntryPrice;
+                    rec2.Qty       = _openAtmTrade.Quantity;
+                }
+            }
+            else if (_openAtmTrade != null && isNowFlat)
+            {
+                // Exit fill — position closed
+                double pnl = ComputeAtmTradePnl (_openAtmTrade.Direction, _openAtmTrade.EntryPrice,
+                    price, _openAtmTrade.Quantity);
+                Print ($"[{Name}] TRADE CLOSE | {time:yyyy-MM-dd HH:mm:ss} | {_openAtmTrade.Direction} "
+                    + $"Entry={_openAtmTrade.EntryPrice:F2} | Exit={price:F2} | Qty={_openAtmTrade.Quantity} | "
+                    + $"PnL={pnl:F2} | ATM={_openAtmTrade.AtmId}");
+
+                if (_openAtmTrade.IsMartingale)
+                    ProcessMartingaleAtmTradeClose (pnl, time);
+                else
+                    ProcessNormalAtmTradeClose (pnl, time);
+            }
+        }
+
+        private double ComputeAtmTradePnl (MarketPosition direction, double entryPx, double exitPx, int qty)
+        {
+            double diff = direction == MarketPosition.Long ? exitPx - entryPx : entryPx - exitPx;
+            return Math.Round (diff * Instrument.MasterInstrument.PointValue * qty, 2);
+        }
+
+        private void ProcessNormalAtmTradeClose (double pnl, DateTime closeTime)
+        {
+            MarketPosition closedDir   = _openAtmTrade.Direction;
+            string         closedAtmId = _openAtmTrade.AtmId;
+            bool startMartingale       = ShouldStartMartingaleRecovery (pnl, closedDir);
+            MarketPosition martDir     = startMartingale ? GetOppositeDirection (closedDir) : MarketPosition.Flat;
+
+            lastAtmRealizedPnL = pnl;
+            totalRealizedPnL   = Math.Round (totalRealizedPnL + pnl, 2);
+            dailyRealizedPnL   = Math.Round (totalRealizedPnL - sessionStartTotalRealizedPnL, 2);
+            totalRunningPnL    = Math.Round (totalRealizedPnL + (UseUnrealizedPnl ? dailyUnrealizedPnL : 0.0), 2);
+
+            UpdateSignalTrackingOnTradeClose (pnl);
+            UpdateLastTradeClosedSummary (pnl);
+            PrintSignalTrackingOnTradeClose (pnl);
+            WriteTradeLogRecord (closedAtmId, closeTime, pnl);
+
+            _tradeMap.TryRemove (closedAtmId, out _);
+            ClearActiveTradeSignalSources ();
+            _openAtmTrade         = null;
+            atmStrategyId         = string.Empty;
+            orderId               = string.Empty;
+            isAtmStrategyCreated  = false;
+            _atmPositionConfirmed = false;
+            _atmIdsSetUtc         = DateTime.MinValue;
+            dailyUnrealizedPnL    = 0.0;
+
+            if (startMartingale && martDir != MarketPosition.Flat)
+                SubmitMartingaleRecoveryEntry (martDir);
+        }
+
+        private void ProcessMartingaleAtmTradeClose (double pnl, DateTime closeTime)
+        {
+            string closedAtmId        = _openAtmTrade.AtmId;
+            martingaleLastRealizedPnL = pnl;
+            totalRealizedPnL         += pnl;
+            UpdateLastTradeClosedSummary (pnl);
+            WriteTradeLogRecord (closedAtmId, closeTime, pnl);
+            Print ($"[{Name}] MARTINGALE CLOSED | PnL={pnl:F2} | Recovery complete. Normal entries resumed.");
+            _tradeMap.TryRemove (closedAtmId, out _);
+            _openAtmTrade      = null;
+            dailyUnrealizedPnL = 0.0;
+            ResetMartingaleRecovery ();
+        }
+
         private void ClearNormalAtmState (string reason)
         {
             Print ($"[{Name}] CLEAR NORMAL ATM STATE | Reason={reason} | ATM={atmStrategyId} | Order={orderId}");
@@ -5881,6 +6000,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             isAtmStrategyCreated = false;
             _atmPositionConfirmed = false;
             _atmIdsSetUtc = DateTime.MinValue;     // defense #3: reset registration-timeout clock
+            _openAtmTrade = null;
             dailyUnrealizedPnL = 0.0;
 
             ClearActiveTradeSignalSources ();
@@ -5996,6 +6116,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             martingaleLastRealizedPnL = 0.0;
             martingaleAtmStrategyCreated = false;
             martingalePositionConfirmed = false;
+            _pendingAtmSignalTrigger = $"MART-{(direction == MarketPosition.Long ? "L" : "S")}";
 
             martingaleAtmStrategyId = GetAtmStrategyUniqueId ();
             martingaleOrderId = GetAtmStrategyUniqueId ();
@@ -6057,100 +6178,23 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             if (OrderMode == OrderManagementMode.FixedTicks)
                 return 0.0;
 
-            if (string.IsNullOrEmpty (martingaleAtmStrategyId))
-                return 0.0;
-
-            try
+            // Compute from fill price vs current tick price — works in all modes including Playback.
+            if (_openAtmTrade != null && _openAtmTrade.IsMartingale && Closes.Length > 1 && _openAtmTrade.Quantity > 0)
             {
-                if (GetAtmStrategyMarketPosition (martingaleAtmStrategyId) != Cbi.MarketPosition.Flat)
-                    return Instrument.MasterInstrument.RoundToTickSize (GetAtmStrategyUnrealizedProfitLoss (martingaleAtmStrategyId));
+                double currentPx = Closes[1][0];
+                double priceDiff = _openAtmTrade.Direction == MarketPosition.Long
+                    ? currentPx - _openAtmTrade.EntryPrice
+                    : _openAtmTrade.EntryPrice - currentPx;
+                return Math.Round (priceDiff * Instrument.MasterInstrument.PointValue * _openAtmTrade.Quantity, 2);
             }
-            catch { }
 
             return 0.0;
         }
 
         private void UpdateMartingaleRecoveryOnTick (DateTime tickTime)
         {
-            if (!martingaleRecoveryActive)
-                return;
-
-            if (OrderMode == OrderManagementMode.FixedTicks)
-                return;
-
-            if (!string.IsNullOrEmpty (martingaleOrderId))
-            {
-                string[] status = GetAtmStrategyEntryOrderStatus (martingaleOrderId);
-
-                if (status != null && status.Length >= 3)
-                {
-                    if (status[2] == "Filled")
-                    {
-                        CaptureMartingaleFill (status);
-                        martingaleOrderId = string.Empty;
-                    }
-                    else if (status[2] == "Cancelled" || status[2] == "Rejected")
-                    {
-                        Print ($"[{Name}] MARTINGALE ENTRY {status[2]} | Resetting recovery state.");
-                        _tradeMap.TryRemove (martingaleAtmStrategyId, out _);
-                        ResetMartingaleRecovery ();
-                        return;
-                    }
-                }
-            }
-
-            if (string.IsNullOrEmpty (martingaleAtmStrategyId))
-                return;
-
-            Cbi.MarketPosition atmPos = Cbi.MarketPosition.Flat;
-
-            try
-            {
-                atmPos = GetAtmStrategyMarketPosition (martingaleAtmStrategyId);
-            }
-            catch
-            {
-                return;
-            }
-
-            if (atmPos != Cbi.MarketPosition.Flat)
-            {
-                martingalePositionConfirmed = true;
-                martingaleAtmStrategyCreated = true;
-                martingaleOrderId = string.Empty;
-
-                if (_tradeMap.TryGetValue (martingaleAtmStrategyId, out TradeRecord rec) && rec.OpenPrice == 0.0)
-                {
-                    double avgPrice = GetAtmStrategyPositionAveragePrice (martingaleAtmStrategyId);
-                    if (avgPrice > 0)
-                    {
-                        rec.OpenPrice = Instrument.MasterInstrument.RoundToTickSize (avgPrice);
-                        rec.Qty = (int)GetAtmStrategyPositionQuantity (martingaleAtmStrategyId);
-                    }
-                }
-
-                return;
-            }
-
-            if (martingalePositionConfirmed)
-            {
-                double realized = GetAtmStrategyRealizedProfitLoss (martingaleAtmStrategyId);
-
-                if (!double.IsNaN (realized))
-                    martingaleLastRealizedPnL = Instrument.MasterInstrument.RoundToTickSize (realized);
-                else
-                    martingaleLastRealizedPnL = 0.0;
-
-                totalRealizedPnL += martingaleLastRealizedPnL;
-                UpdateLastTradeClosedSummary (martingaleLastRealizedPnL);
-
-                WriteTradeLogRecord (martingaleAtmStrategyId, tickTime, martingaleLastRealizedPnL);
-
-                Print ($"[{Name}] MARTINGALE CLOSED | PnL={martingaleLastRealizedPnL:F2} | Recovery complete. Normal signal entries resumed.");
-
-                _tradeMap.TryRemove (martingaleAtmStrategyId, out _);
-                ResetMartingaleRecovery ();
-            }
+            // Martingale open/close detection moved to OnExecutionUpdate via HandleAtmExecution.
+            // This method is kept as a placeholder in case future tick-rate checks are needed.
         }
 
         private void EvictStaleAtmIdsIfTimedOut ()
@@ -6178,7 +6222,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     _atmIdsSetUtc = DateTime.MinValue;
                     ClearActiveTradeSignalSources ();
                 }
-                else if (_atmPositionConfirmed && IsAtmMidTradeStale (atmStrategyId))
+                else if (_openAtmTrade != null && !_openAtmTrade.IsMartingale && IsAtmMidTradeStale (atmStrategyId))
                 {
                     // Defense #8: NT8 lost the ATM ID for an actively-trading position.
                     // FlattenEverything submits ExitLong/Short + Account.Cancel which
@@ -6188,8 +6232,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                         + $"NT8 now reports Flat while Account still holds position. "
                         + $"Likely HDS bounce. Triggering Account-level recovery.");
 
-                    // Salvage trade log BEFORE clearing state — _atmPositionConfirmed
-                    // will be false after this block, making WriteTradeLogRecord unreachable.
+                    // Salvage trade log BEFORE clearing state.
                     string d8SavedId    = atmStrategyId;
                     double d8ForcedPnl  = Instrument.MasterInstrument.RoundToTickSize (dailyUnrealizedPnL);
                     if (EnableDebug)
@@ -6198,36 +6241,28 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     _tradeMap.TryRemove (d8SavedId, out _);
 
                     FlattenEverything ("Defense #8: mid-trade ATM ID went stale (HDS bounce recovery)");
-                    atmStrategyId = string.Empty;
-                    orderId = string.Empty;
-                    isAtmStrategyCreated = false;
+                    _openAtmTrade         = null;
+                    atmStrategyId         = string.Empty;
+                    orderId               = string.Empty;
+                    isAtmStrategyCreated  = false;
                     _atmPositionConfirmed = false;
-                    _atmIdsSetUtc = DateTime.MinValue;
+                    _atmIdsSetUtc         = DateTime.MinValue;
                     ClearActiveTradeSignalSources ();
                 }
-                else if (isAtmStrategyCreated && !_atmPositionConfirmed)
+                else if (isAtmStrategyCreated && !_atmPositionConfirmed
+                    && (_atmIdsSetUtc == DateTime.MinValue
+                        || (nowUtc - _atmIdsSetUtc).TotalSeconds > ATM_REGISTRATION_TIMEOUT_SEC))
                 {
-                    // Defense #9: zombie ID in the dead zone between Defense #3 and Defense #8.
-                    //
-                    // State: isAtmStrategyCreated=true (ATM callback confirmed), but
-                    // _atmPositionConfirmed=false (reset by State.Realtime on re-enable).
-                    // Neither Defense #3 (requires !isAtmStrategyCreated) nor Defense #8
-                    // (requires _atmPositionConfirmed) can evict this ID. The ATM no longer
-                    // exists in NT8 and the account is flat — the trade closed while the
-                    // strategy was disabled and GZK never detected it.
-                    //
-                    // Root cause observed: May 28 trade on LFE closed normally; strategy
-                    // disabled before the next tick cleared atmStrategyId; re-enabled May 29;
-                    // _atmPositionConfirmed was reset to false in Realtime but atmStrategyId
-                    // was not, leaving a zombie that blocked the 06:35 signal entry.
-                    //
-                    // Primary fix is clearing in State.Terminated; this is belt-and-suspenders
-                    // in case Terminated cleanup does not run (crash, NT8 internal error, etc.).
+                    // Defense #9: ATM callback confirmed (isAtmStrategyCreated=true) but position
+                    // was never opened or was reset on re-enable (_atmPositionConfirmed=false).
+                    // Age guard prevents firing during the brief callback-to-fill window on live entries.
+                    // Primary fix is clearing in State.Terminated; this is belt-and-suspenders.
                     Print ($"[{Name}] STALE ATM IDS CLEARED (Defense #9 — zombie from prior session) — "
                         + $"atmId={atmStrategyId} orderId={orderId} "
                         + $"isAtmStrategyCreated=true _atmPositionConfirmed=false. "
                         + $"ATM no longer exists and account is flat. Clearing to allow new entries.");
                     _tradeMap.TryRemove (atmStrategyId, out _);
+                    _openAtmTrade         = null;
                     atmStrategyId         = string.Empty;
                     orderId               = string.Empty;
                     isAtmStrategyCreated  = false;
@@ -6253,7 +6288,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     _tradeMap.TryRemove (martingaleAtmStrategyId, out _);
                     ResetMartingaleRecovery ();
                 }
-                else if (martingalePositionConfirmed && IsAtmMidTradeStale (martingaleAtmStrategyId))
+                else if (_openAtmTrade != null && _openAtmTrade.IsMartingale && IsAtmMidTradeStale (martingaleAtmStrategyId))
                 {
                     Print ($"[{Name}] MID-TRADE MARTINGALE ATM STALENESS DETECTED — "
                         + $"martingaleAtmId={martingaleAtmStrategyId}. Triggering Account-level recovery.");
@@ -6267,6 +6302,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
                     FlattenEverything ("Defense #8: mid-trade martingale ATM ID went stale");
                     _tradeMap.TryRemove (d8MartSavedId, out _);
+                    _openAtmTrade = null;
                     ResetMartingaleRecovery ();
                 }
             }
@@ -8315,14 +8351,6 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             get; set;
         }
 
-        [TypeConverter (typeof (FriendlyAtmConverter))]
-        [PropertyEditor ("NinjaTrader.Gui.Tools.StringStandardValuesEditorKey")]
-        [Display (Name = "Martingale ATM Strategy", Order = 8, GroupName = "ATM Parameters", Description = "Select the ATM template used for the one-time opposite-direction martingale recovery entry. Hidden unless Enable Martingale On StopLoss is enabled and Order Management Mode is AtmStrategy.")]
-        public string MartingaleAtmStrategy
-        {
-            get; set;
-        }
-
         // ==================== Signals ====================
         [NinjaScriptProperty]
         [Display (Name = "Enable Signal Tracking", Order = 0, GroupName = "Signals")]
@@ -9440,6 +9468,14 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         [Display (Name = "Enable Martingale On StopLoss", Order = 6, GroupName = "Risk Management", Description = "If enabled, a losing normal ATM trade submits one opposite-direction recovery entry using the Martingale ATM Strategy. A losing martingale entry does not trigger another martingale.")]
         [RefreshProperties (RefreshProperties.All)]
         public bool EnableMartingaleOnStopLoss
+        {
+            get; set;
+        }
+
+        [TypeConverter (typeof (FriendlyAtmConverter))]
+        [PropertyEditor ("NinjaTrader.Gui.Tools.StringStandardValuesEditorKey")]
+        [Display (Name = "Martingale ATM Strategy", Order = 7, GroupName = "Risk Management", Description = "ATM template for the one-time opposite-direction martingale recovery entry. Visible only when Enable Martingale On StopLoss is checked.")]
+        public string MartingaleAtmStrategy
         {
             get; set;
         }
