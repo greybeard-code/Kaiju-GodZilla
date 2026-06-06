@@ -256,6 +256,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         private bool   _nativeBracketsActive         = false;
         private string _nativeTradeId                = string.Empty;
         private bool   _nativeTargetsPending         = false;
+        private int    _nativeTargetsSettleTicks     = 0;    // ticks remaining before targets submit
 
         private class AtmOpenTrade
         {
@@ -2148,12 +2149,17 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 if (_openAtmTrade != null && Position != null && Position.MarketPosition != MarketPosition.Flat
                     && Closes.Length > 1)
                 {
-                    double currentPx = Closes[1][0];
-                    double priceDiff = _openAtmTrade.Direction == MarketPosition.Long
+                    double currentPx  = Closes[1][0];
+                    double priceDiff  = _openAtmTrade.Direction == MarketPosition.Long
                         ? currentPx - _openAtmTrade.EntryPrice
                         : _openAtmTrade.EntryPrice - currentPx;
+                    // Use live position quantity so unrealized PnL shrinks correctly
+                    // as individual bracket targets fill and contracts close.
+                    int liveQty = (Position != null && Math.Abs (Position.Quantity) > 0)
+                        ? Math.Abs (Position.Quantity)
+                        : _openAtmTrade.Quantity;
                     normalUnrealizedPnL = Math.Round (
-                        priceDiff * Instrument.MasterInstrument.PointValue * _openAtmTrade.Quantity, 2);
+                        priceDiff * Instrument.MasterInstrument.PointValue * liveQty, 2);
                     normalUnrealizedPnL = AdjustFreshStartInheritedUnrealizedPnl (normalUnrealizedPnL);
 
                     ManageNativeBrackets (currentPx);
@@ -4662,7 +4668,11 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 {
                     ClearPendingReverse ();
                 }
-                else if (GetCurrentTradePosition () == MarketPosition.Flat && !HasActiveEntryState ())
+                // For native bracket mode, also require _openAtmTrade == null so the
+                // reverse cannot fire until HandleAtmExecution has fully processed the
+                // position close (ProcessNormalAtmTradeClose cleared the trade state).
+                else if (GetCurrentTradePosition () == MarketPosition.Flat && !HasActiveEntryState ()
+                         && (_openAtmTrade == null || !_nativeBracketsActive))
                 {
                     if (pendingReverseDirection == MarketPosition.Long && _armLong)
                     {
@@ -5748,9 +5758,14 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                         rec.OpenPrice = _openAtmTrade.EntryPrice;
                         rec.Qty       = quantity;
                     }
-                    _atmPositionConfirmed    = true;
-                    _pendingAtmSignalTrigger = string.Empty;
-                    _nativeTargetsPending    = true;
+                    _atmPositionConfirmed     = true;
+                    _pendingAtmSignalTrigger  = string.Empty;
+                    // Defer target submission by 2 ticks so the managed stop order and
+                    // entry position are fully settled before ExitLongLimit/ExitShortLimit
+                    // are submitted.  Submitting on the same tick as the fill causes NT8's
+                    // "Internal Order Handling Rules" rejection and stop amendment failure.
+                    _nativeTargetsPending     = true;
+                    _nativeTargetsSettleTicks = 2;
 
                     ParsedAtmTemplate tpl = _parsedAtmTemplate;
                     BracketConfig lastBracket = (tpl != null && tpl.IsValid && tpl.Brackets.Count > 0)
@@ -5766,8 +5781,26 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                         + (lastBracket != null && lastBracket.HasBreakEven ? $" | BE@{lastBracket.BeTriggerTicks}t" : "")
                         + (lastBracket != null && lastBracket.TrailSteps.Count > 0 ? $" | Trail×{lastBracket.TrailSteps.Count}" : ""));
                 }
+                else if (_openAtmTrade != null && !isNowFlat && isEntryFill && _openAtmTrade.Direction == marketPosition)
+                {
+                    // Scale-in: later partial fills of the same entry.
+                    // Average the entry price and accumulate quantity so PnL and
+                    // BE/trail calculations stay accurate.
+                    double totalCost          = _openAtmTrade.EntryPrice * _openAtmTrade.Quantity + price * quantity;
+                    _openAtmTrade.Quantity   += quantity;
+                    _openAtmTrade.EntryPrice  = Instrument.MasterInstrument.RoundToTickSize (totalCost / _openAtmTrade.Quantity);
+                    if (_tradeMap.TryGetValue (_nativeTradeId, out TradeRecord recSI))
+                    {
+                        recSI.OpenPrice = _openAtmTrade.EntryPrice;
+                        recSI.Qty       = _openAtmTrade.Quantity;
+                    }
+                    if (EnableDebug)
+                        Print ($"[{Name}] TRADE SCALE-IN (native) | {time:yyyy-MM-dd HH:mm:ss} | +{quantity}@{price:F2} | AvgEntry={_openAtmTrade.EntryPrice:F2} | TotalQty={_openAtmTrade.Quantity}");
+                }
                 else if (_openAtmTrade != null && isNowFlat && !isEntryFill)
                 {
+                    // Position fully flat — compute PnL using total entry quantity and
+                    // averaged entry price against the final exit price.
                     double pnl = ComputeAtmTradePnl (_openAtmTrade.Direction, _openAtmTrade.EntryPrice,
                         price, _openAtmTrade.Quantity);
                     Print ($"[{Name}] TRADE CLOSE (native) | {time:yyyy-MM-dd HH:mm:ss} | {_openAtmTrade.Direction} "
@@ -5852,9 +5885,14 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
             _tradeMap.TryRemove (closedAtmId, out _);
             ClearActiveTradeSignalSources ();
+            // Cancel any unfilled bracket target orders.  When the shared stop fires it
+            // uses OCO to cancel the other stop, but the manual ExitLongLimit/ExitShortLimit
+            // targets (linked via fromEntrySignal) are not auto-cancelled by NT8.  Leaving
+            // them working blocks the next entry with "Order rejected".
+            if (_nativeBracketsActive) CancelNativeBracketTargetOrders ();
             _openAtmTrade         = null;
             _bracketState         = null;
-            _nativeTargetsPending = false;
+            _nativeTargetsPending = false; _nativeTargetsSettleTicks = 0;
             _nativeTradeId        = string.Empty;
             atmStrategyId         = string.Empty;
             orderId               = string.Empty;
@@ -5872,7 +5910,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 _tradeMap.TryRemove (_nativeTradeId, out _);
             _nativeTradeId        = string.Empty;
             _bracketState         = null;
-            _nativeTargetsPending = false;
+            _nativeTargetsPending = false; _nativeTargetsSettleTicks = 0;
 
             if (!string.IsNullOrEmpty (atmStrategyId))
                 _tradeMap.TryRemove (atmStrategyId, out _);
@@ -6087,10 +6125,21 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 }
             }
 
-            if (Position.MarketPosition == MarketPosition.Long)
-                ExitLong ("NakedFlat", "");
-            else if (Position.MarketPosition == MarketPosition.Short)
-                ExitShort ("NakedFlat", "");
+            // For native bracket mode, ExitLong/ExitShort uses Position.Quantity which
+            // reads 0 because pending ExitLongLimit/ExitShortLimit orders have already
+            // consumed all strategy-tracked contracts.  Account.Flatten bypasses strategy
+            // position tracking and closes the actual account position.
+            if (_nativeBracketsActive && Account != null && Instrument != null)
+            {
+                try { Account.Flatten (new[] { Instrument }); } catch { }
+            }
+            else
+            {
+                if (Position.MarketPosition == MarketPosition.Long)
+                    ExitLong ("NakedFlat", "");
+                else if (Position.MarketPosition == MarketPosition.Short)
+                    ExitShort ("NakedFlat", "");
+            }
 
             if (Account != null)
             {
@@ -10649,17 +10698,60 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             return result;
         }
 
+        // Cancels any working bracket target orders (GzkNB_T*) left over after the
+        // position closes via the shared stop.  NT8 does not auto-cancel manual
+        // ExitLongLimit/ExitShortLimit orders when the associated stop fires OCO.
+        private void CancelNativeBracketTargetOrders ()
+        {
+            if (Account == null || Instrument == null) return;
+
+            string targetPrefix = NativeBracketPrefix + NativeTargetTag;
+            List<Order> toCancel = new List<Order> ();
+
+            try
+            {
+                lock (Account.Orders)
+                {
+                    foreach (Order o in Account.Orders)
+                    {
+                        if (o == null || o.Instrument == null) continue;
+                        if (o.Instrument.FullName != Instrument.FullName) continue;
+                        if (o.Name == null || !o.Name.StartsWith (targetPrefix, StringComparison.Ordinal)) continue;
+
+                        if (o.OrderState == OrderState.Working
+                            || o.OrderState == OrderState.Accepted
+                            || o.OrderState == OrderState.Submitted)
+                            toCancel.Add (o);
+                    }
+                }
+
+                foreach (Order o in toCancel)
+                {
+                    try { Account.Cancel (new[] { o }); } catch { }
+                }
+
+                if (toCancel.Count > 0 && EnableDebug)
+                    Print ($"[{Name}] NATIVE TARGETS CANCELLED | {toCancel.Count} order(s) cancelled after position close");
+            }
+            catch { }
+        }
+
         private void SubmitNativeBracketTargets ()
         {
             if (State != State.Realtime) return;
             if (!_nativeBracketsActive || !_nativeTargetsPending) return;
             if (_openAtmTrade == null) return;
 
+            // Wait for the settle counter to reach zero before submitting.
+            // This gives the managed stop and partial fills time to process
+            // so targets are not rejected by NT8's order handling rules.
+            if (_nativeTargetsSettleTicks > 0) { _nativeTargetsSettleTicks--; return; }
+
             ParsedAtmTemplate tpl    = _parsedAtmTemplate;
             string            entrySig = NativeBracketPrefix + NativeEntryTag;
             bool              isLong = _openAtmTrade.Direction == MarketPosition.Long;
 
-            if (tpl == null || !tpl.IsValid) { _nativeTargetsPending = false; return; }
+            if (tpl == null || !tpl.IsValid) { _nativeTargetsPending = false; _nativeTargetsSettleTicks = 0; return; }
 
             for (int i = 0; i < tpl.Brackets.Count; i++)
             {
@@ -10669,17 +10761,25 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     : Instrument.MasterInstrument.RoundToTickSize (_openAtmTrade.EntryPrice - b.TargetTicks * TickSize);
                 string tgtSig = NativeBracketPrefix + NativeTargetTag + i;
 
-                if (isLong) ExitLongLimit  (b.Quantity, targetPx, tgtSig, entrySig);
-                else        ExitShortLimit (b.Quantity, targetPx, tgtSig, entrySig);
+                // barsInProgress=0 forces fill simulation against the primary series
+                // OHLC data.  Without it, orders submitted from BIP=1 (tick series)
+                // are not fill-simulated in bar-close Playback mode.
+                if (isLong) ExitLongLimit  (0, true, b.Quantity, targetPx, tgtSig, entrySig);
+                else        ExitShortLimit (0, true, b.Quantity, targetPx, tgtSig, entrySig);
 
                 Print ($"[{Name}] NATIVE TARGET | Bracket {i} sig={tgtSig} qty={b.Quantity} px={targetPx:F2}");
             }
-            _nativeTargetsPending = false;
+            _nativeTargetsPending = false; _nativeTargetsSettleTicks = 0;
         }
 
         private void ManageNativeBrackets (double currentPx)
         {
             if (_openAtmTrade == null || _bracketState == null) return;
+
+            // Don't touch the stop while targets are still pending submission.
+            // SetStopLoss during the same tick as entry fills causes "Unable to
+            // change order" because the managed stop is still in a transient state.
+            if (_nativeTargetsPending) return;
 
             ParsedAtmTemplate template = _parsedAtmTemplate;
             if (template == null || !template.IsValid || template.Brackets.Count == 0) return;
