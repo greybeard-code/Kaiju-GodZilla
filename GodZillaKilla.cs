@@ -530,8 +530,10 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 // them — pairs with the OnOrderUpdate diagnostic logging below.
                 RealtimeErrorHandling = RealtimeErrorHandling.StopCancelClose;
                 BarsRequiredToTrade = 2;
+                // Allow up to 4 entries per direction so NT8's framework doesn't block
+                // the 4-bracket slot allocation.  UniqueEntries (default) is kept so
+                // the same signal name cannot re-enter while a position is already open.
                 EntriesPerDirection  = 4;
-                EntryHandling        = EntryHandling.AllEntries;
                 IsInstantiatedOnEachOptimizationIteration = false;
                 IsUnmanaged = false;
                 IsAdoptAccountPositionAware = true;
@@ -5472,8 +5474,11 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 if (EnableDebug)
                     Print ($"[{Name}] DIAG:NATIVE_ENTRY | {Time[0]:yyyy-MM-dd HH:mm:ss} | Dir={(isLong?"Long":"Short")} | Template={AtmStrategy} | TradeId={_nativeTradeId} | TotalQty={totalQty} | Brackets={_parsedAtmTemplate.Brackets.Count}");
 
-                if (isLong) EnterLong  (totalQty, 0, entrySig);
-                else        EnterShort (totalQty, 0, entrySig);
+                // barsInProgress=0 selects the primary series.
+                // EnterLong(qty, 0, name) would resolve to EnterLong(barsInProgress, qty, name)
+                // with barsInProgress=qty, causing an out-of-range error on a near-empty series.
+                if (isLong) EnterLong  (0, totalQty, entrySig);
+                else        EnterShort (0, totalQty, entrySig);
             }
             else
             {
