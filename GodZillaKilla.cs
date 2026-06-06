@@ -1382,6 +1382,13 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             if (IsNewsTradingBlocked ())
                 return;
 
+            // Native bracket BE/trail management — runs at bar close (BarsInProgress==0)
+            // so SetStopLoss is processed after the bar's OHLC fill simulation is complete,
+            // avoiding the "Unable to change order" race condition in Playback.
+            if (_nativeBracketsActive && _openAtmTrade != null && !_nativeTargetsPending
+                && State == State.Realtime)
+                ManageNativeBrackets (Close[0]);
+
             // 7. Position & Reversal (REV) Management
             MarketPosition currentTradePosition = GetCurrentTradePosition();
 
@@ -2161,8 +2168,9 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     normalUnrealizedPnL = Math.Round (
                         priceDiff * Instrument.MasterInstrument.PointValue * liveQty, 2);
                     normalUnrealizedPnL = AdjustFreshStartInheritedUnrealizedPnl (normalUnrealizedPnL);
-
-                    ManageNativeBrackets (currentPx);
+                    // ManageNativeBrackets is called from BarsInProgress==0 (primary series
+                    // bar close) to avoid Playback fill-simulation race conditions where a
+                    // SetStopLoss amendment conflicts with the same bar's OHLC processing.
                 }
                 else
                 {
