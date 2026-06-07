@@ -503,7 +503,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 Description = "GodZillaKilla — strategy using direct KingOrderBlock/PANAKanal/ThunderZilla/SuperJumpBoost/SumoPullback/NobleCloud child indicator signals.";
                 Name = "GodZillaKilla";
                 StrategyName = Name;
-                _strategyVersion = "1.8.3";
+                _strategyVersion = "1.8.4 Beta";
 
                 Author = "Playr101";
                 Credits = "GreyBeard, ninZa.co, RenkoKings, ES, rbro999";
@@ -1896,9 +1896,6 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
         private bool ShouldSyncFixedPerformanceNow (DateTime nowUtc)
         {
-            if (OrderMode != OrderManagementMode.FixedTicks)
-                return false;
-
             if (_fixedPerfSyncRequested)
                 return true;
 
@@ -1907,8 +1904,6 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
         private bool TrySyncFixedTicksPnlFromSystemPerformanceThrottled (DateTime tickTime, DateTime nowUtc, bool force)
         {
-            if (OrderMode != OrderManagementMode.FixedTicks)
-                return false;
 
             if (!force && !ShouldSyncFixedPerformanceNow (nowUtc))
                 return false;
@@ -2160,6 +2155,9 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             }
             else
             {
+                // ATM mode: flush any pending SystemPerformance sync (requested on trade close).
+                if (_fixedPerfSyncRequested)
+                    TrySyncFixedTicksPnlFromSystemPerformanceThrottled (tickTime, nowUtc, true);
                 // ATM mode polling — works in Playback, Sim, and Live.
                 // OnExecutionUpdate (HandleAtmExecution) also fires in Sim/Live and sets
                 // _openAtmTrade earlier, making this a no-op in those modes. In Playback,
@@ -2232,20 +2230,12 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     if (posFlat)
                     {
                         // Position went flat — trade closed.
-                        // PnL: try ATM API (works live); fall back to price computation (Playback).
-                        double pnl;
-                        double atmRealized;
-                        if (TryGetAtmRealizedPnlSafe (_openAtmTrade.AtmId, "Poll", out atmRealized)
-                            && atmRealized != 0.0)
-                        {
-                            pnl = Instrument.MasterInstrument.RoundToTickSize (atmRealized);
-                        }
-                        else
-                        {
-                            double exitPx = Closes.Length > 1 ? Closes[1][0] : Close[0];
-                            pnl = ComputeAtmTradePnl (_openAtmTrade.Direction, _openAtmTrade.EntryPrice,
-                                exitPx, _openAtmTrade.Quantity);
-                        }
+                        // Use price computation for an immediate estimate; ProcessNormal/MartingaleAtmTradeClose
+                        // calls RequestFixedPerformanceSync so the next tick corrects totalRealizedPnL
+                        // from SystemPerformance.AllTrades (the authoritative broker value).
+                        double exitPx = Closes.Length > 1 ? Closes[1][0] : Close[0];
+                        double pnl = ComputeAtmTradePnl (_openAtmTrade.Direction, _openAtmTrade.EntryPrice,
+                            exitPx, _openAtmTrade.Quantity);
 
                         Print ($"[{Name}] POLL CLOSE | {tickTime:yyyy-MM-dd HH:mm:ss} | {_openAtmTrade.Direction} "
                             + $"Entry={_openAtmTrade.EntryPrice:F2} | PnL={pnl:F2}");
@@ -5191,8 +5181,6 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
         private void SyncFixedTicksPnlFromSystemPerformance (DateTime tickTime)
         {
-            if (OrderMode != OrderManagementMode.FixedTicks)
-                return;
 
             double cumulativeClosed = 0.0;
             Trade lastTrade = null;
@@ -5970,6 +5958,11 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             _atmIdsSetUtc         = DateTime.MinValue;
             dailyUnrealizedPnL    = 0.0;
 
+            // Schedule a SystemPerformance sync so totalRealizedPnL is corrected from the
+            // authoritative broker value on the next tick rather than relying on the price-math
+            // estimate above.  This avoids any dependency on GetAtmStrategyRealizedProfitLoss.
+            RequestFixedPerformanceSync ();
+
             if (startMartingale && martDir != MarketPosition.Flat)
                 SubmitMartingaleRecoveryEntry (martDir);
         }
@@ -5986,6 +5979,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             _openAtmTrade      = null;
             dailyUnrealizedPnL = 0.0;
             ResetMartingaleRecovery ();
+            RequestFixedPerformanceSync ();
         }
 
         private void ClearNormalAtmState (string reason)
