@@ -157,21 +157,21 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 
 				// Signals — Set 1
 				GroupTriggerSet1RequiredCount = 3;
-				UseKOSignals = true;   RequireKOSignal = false;  KO_LongOperator = GodZukiSignalOperator.Equal; KO_LongValue = 1;  KO_ShortOperator = GodZukiSignalOperator.Equal; KO_ShortValue = -1;
-				UsePASignals = true;   RequirePASignal = false;  PA_LongOperator = GodZukiSignalOperator.Equal; PA_LongValue = 2;  PA_ShortOperator = GodZukiSignalOperator.Equal; PA_ShortValue = -2;
-				UseTHSignals = true;   RequireTHSignal = false;  TH_LongOperator = GodZukiSignalOperator.Equal; TH_LongValue = 2;  TH_ShortOperator = GodZukiSignalOperator.Equal; TH_ShortValue = -2;
-				UseSJSignals = true;   RequireSJSignal = false;  SJ_LongOperator = GodZukiSignalOperator.Equal; SJ_LongValue = 1;  SJ_ShortOperator = GodZukiSignalOperator.Equal; SJ_ShortValue = -1;
-				UseSUSignals = true;   RequireSUSignal = false;  SU_LongOperator = GodZukiSignalOperator.Equal; SU_LongValue = 1;  SU_ShortOperator = GodZukiSignalOperator.Equal; SU_ShortValue = -1;
-				UseNCSignals = true;   RequireNCSignal = false;  NC_LongOperator = GodZukiSignalOperator.Equal; NC_LongValue = 1;  NC_ShortOperator = GodZukiSignalOperator.Equal; NC_ShortValue = -1;
+				UseKOSignals = true;   RequireKOSignal = false;  KO_LongOperator = GodZukiSignalOperator.GreaterOrEqual; KO_LongValue = 1;  KO_ShortOperator = GodZukiSignalOperator.LessOrEqual; KO_ShortValue = -1;
+				UsePASignals = true;   RequirePASignal = false;  PA_LongOperator = GodZukiSignalOperator.GreaterOrEqual; PA_LongValue = 2;  PA_ShortOperator = GodZukiSignalOperator.LessOrEqual; PA_ShortValue = -2;
+				UseTHSignals = true;   RequireTHSignal = false;  TH_LongOperator = GodZukiSignalOperator.GreaterOrEqual; TH_LongValue = 2;  TH_ShortOperator = GodZukiSignalOperator.LessOrEqual; TH_ShortValue = -2;
+				UseSJSignals = true;   RequireSJSignal = false;  SJ_LongOperator = GodZukiSignalOperator.GreaterOrEqual; SJ_LongValue = 1;  SJ_ShortOperator = GodZukiSignalOperator.LessOrEqual; SJ_ShortValue = -1;
+				UseSUSignals = true;   RequireSUSignal = false;  SU_LongOperator = GodZukiSignalOperator.GreaterOrEqual; SU_LongValue = 1;  SU_ShortOperator = GodZukiSignalOperator.LessOrEqual; SU_ShortValue = -1;
+				UseNCSignals = true;   RequireNCSignal = false;  NC_LongOperator = GodZukiSignalOperator.GreaterOrEqual; NC_LongValue = 1;  NC_ShortOperator = GodZukiSignalOperator.LessOrEqual; NC_ShortValue = -1;
 
 				// Signals — Set 2
 				EnableGroupTriggerSet2 = false; GroupTriggerSet2RequiredCount = 3;
-				G2_UseKOSignals = true;  G2_RequireKOSignal = false; G2_KO_LongOperator = GodZukiSignalOperator.Equal; G2_KO_LongValue = 1;  G2_KO_ShortOperator = GodZukiSignalOperator.Equal; G2_KO_ShortValue = -1;
-				G2_UsePASignals = true;  G2_RequirePASignal = false; G2_PA_LongOperator = GodZukiSignalOperator.Equal; G2_PA_LongValue = 3;  G2_PA_ShortOperator = GodZukiSignalOperator.Equal; G2_PA_ShortValue = -3;
-				G2_UseTHSignals = true;  G2_RequireTHSignal = false; G2_TH_LongOperator = GodZukiSignalOperator.Equal; G2_TH_LongValue = 3;  G2_TH_ShortOperator = GodZukiSignalOperator.Equal; G2_TH_ShortValue = -3;
-				G2_UseSJSignals = true;  G2_RequireSJSignal = false; G2_SJ_LongOperator = GodZukiSignalOperator.Equal; G2_SJ_LongValue = 1;  G2_SJ_ShortOperator = GodZukiSignalOperator.Equal; G2_SJ_ShortValue = -1;
-				G2_UseSUSignals = true;  G2_RequireSUSignal = false; G2_SU_LongOperator = GodZukiSignalOperator.Equal; G2_SU_LongValue = 1;  G2_SU_ShortOperator = GodZukiSignalOperator.Equal; G2_SU_ShortValue = -1;
-				G2_UseNCSignals = true;  G2_RequireNCSignal = false; G2_NC_LongOperator = GodZukiSignalOperator.Equal; G2_NC_LongValue = 1;  G2_NC_ShortOperator = GodZukiSignalOperator.Equal; G2_NC_ShortValue = -1;
+				G2_UseKOSignals = true;  G2_RequireKOSignal = false; G2_KO_LongOperator = GodZukiSignalOperator.GreaterOrEqual; G2_KO_LongValue = 1;  G2_KO_ShortOperator = GodZukiSignalOperator.LessOrEqual; G2_KO_ShortValue = -1;
+				G2_UsePASignals = true;  G2_RequirePASignal = false; G2_PA_LongOperator = GodZukiSignalOperator.GreaterOrEqual; G2_PA_LongValue = 3;  G2_PA_ShortOperator = GodZukiSignalOperator.LessOrEqual; G2_PA_ShortValue = -3;
+				G2_UseTHSignals = true;  G2_RequireTHSignal = false; G2_TH_LongOperator = GodZukiSignalOperator.GreaterOrEqual; G2_TH_LongValue = 3;  G2_TH_ShortOperator = GodZukiSignalOperator.LessOrEqual; G2_TH_ShortValue = -3;
+				G2_UseSJSignals = true;  G2_RequireSJSignal = false; G2_SJ_LongOperator = GodZukiSignalOperator.GreaterOrEqual; G2_SJ_LongValue = 1;  G2_SJ_ShortOperator = GodZukiSignalOperator.LessOrEqual; G2_SJ_ShortValue = -1;
+				G2_UseSUSignals = true;  G2_RequireSUSignal = false; G2_SU_LongOperator = GodZukiSignalOperator.GreaterOrEqual; G2_SU_LongValue = 1;  G2_SU_ShortOperator = GodZukiSignalOperator.LessOrEqual; G2_SU_ShortValue = -1;
+				G2_UseNCSignals = true;  G2_RequireNCSignal = false; G2_NC_LongOperator = GodZukiSignalOperator.GreaterOrEqual; G2_NC_LongValue = 1;  G2_NC_ShortOperator = GodZukiSignalOperator.LessOrEqual; G2_NC_ShortValue = -1;
 
 				// Filters
 				EnableEmaFilter = false; EmaShortPeriod = 21; EmaLongPeriod = 50;
