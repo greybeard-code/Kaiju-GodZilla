@@ -1896,6 +1896,9 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
         private bool ShouldSyncFixedPerformanceNow (DateTime nowUtc)
         {
+            if (OrderMode != OrderManagementMode.FixedTicks)
+                return false;
+
             if (_fixedPerfSyncRequested)
                 return true;
 
@@ -1904,6 +1907,8 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
         private bool TrySyncFixedTicksPnlFromSystemPerformanceThrottled (DateTime tickTime, DateTime nowUtc, bool force)
         {
+            if (OrderMode != OrderManagementMode.FixedTicks)
+                return false;
 
             if (!force && !ShouldSyncFixedPerformanceNow (nowUtc))
                 return false;
@@ -2155,9 +2160,6 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             }
             else
             {
-                // ATM mode: flush any pending SystemPerformance sync (requested on trade close).
-                if (_fixedPerfSyncRequested)
-                    TrySyncFixedTicksPnlFromSystemPerformanceThrottled (tickTime, nowUtc, true);
                 // ATM mode polling — works in Playback, Sim, and Live.
                 // OnExecutionUpdate (HandleAtmExecution) also fires in Sim/Live and sets
                 // _openAtmTrade earlier, making this a no-op in those modes. In Playback,
@@ -5194,6 +5196,8 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
         private void SyncFixedTicksPnlFromSystemPerformance (DateTime tickTime)
         {
+            if (OrderMode != OrderManagementMode.FixedTicks)
+                return;
 
             double cumulativeClosed = 0.0;
             Trade lastTrade = null;
@@ -5971,11 +5975,6 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             _atmIdsSetUtc         = DateTime.MinValue;
             dailyUnrealizedPnL    = 0.0;
 
-            // Schedule a SystemPerformance sync so totalRealizedPnL is corrected from the
-            // authoritative broker value on the next tick rather than relying on the price-math
-            // estimate above.  This avoids any dependency on GetAtmStrategyRealizedProfitLoss.
-            RequestFixedPerformanceSync ();
-
             if (startMartingale && martDir != MarketPosition.Flat)
                 SubmitMartingaleRecoveryEntry (martDir);
         }
@@ -5992,7 +5991,6 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             _openAtmTrade      = null;
             dailyUnrealizedPnL = 0.0;
             ResetMartingaleRecovery ();
-            RequestFixedPerformanceSync ();
         }
 
         private void ClearNormalAtmState (string reason)
