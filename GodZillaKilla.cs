@@ -2230,12 +2230,25 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     if (posFlat)
                     {
                         // Position went flat — trade closed.
-                        // Use price computation for an immediate estimate; ProcessNormal/MartingaleAtmTradeClose
-                        // calls RequestFixedPerformanceSync so the next tick corrects totalRealizedPnL
-                        // from SystemPerformance.AllTrades (the authoritative broker value).
-                        double exitPx = Closes.Length > 1 ? Closes[1][0] : Close[0];
-                        double pnl = ComputeAtmTradePnl (_openAtmTrade.Direction, _openAtmTrade.EntryPrice,
-                            exitPx, _openAtmTrade.Quantity);
+                        // Primary: ATM API (accurate actual fill price, works in Sim/Live and Playback
+                        // when the ATM ID is still valid at the close moment).
+                        // Fallback: price computation (Closes[1][0] may differ from fill in fast markets).
+                        // Either way, ProcessNormal/MartingaleAtmTradeClose calls
+                        // RequestFixedPerformanceSync so totalRealizedPnL is overwritten by the
+                        // authoritative SystemPerformance value on the very next tick.
+                        double pnl;
+                        double atmRealized;
+                        if (TryGetAtmRealizedPnlSafe (_openAtmTrade.AtmId, "Poll", out atmRealized)
+                            && atmRealized != 0.0)
+                        {
+                            pnl = Instrument.MasterInstrument.RoundToTickSize (atmRealized);
+                        }
+                        else
+                        {
+                            double exitPx = Closes.Length > 1 ? Closes[1][0] : Close[0];
+                            pnl = ComputeAtmTradePnl (_openAtmTrade.Direction, _openAtmTrade.EntryPrice,
+                                exitPx, _openAtmTrade.Quantity);
+                        }
 
                         Print ($"[{Name}] POLL CLOSE | {tickTime:yyyy-MM-dd HH:mm:ss} | {_openAtmTrade.Direction} "
                             + $"Entry={_openAtmTrade.EntryPrice:F2} | PnL={pnl:F2}");
