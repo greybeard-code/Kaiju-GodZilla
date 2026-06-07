@@ -11,7 +11,7 @@ GodZuki is the signal indicator layer of the GodZilla Suite. It reads the same s
 
 | Version | Summary |
 |---|---|
-| **1.3** | Data Box expanded from 11 to 18 plots. Both Signal added (1 when S1=1 AND S2=1, -1 when S1=-1 AND S2=-1, 0 otherwise) at position 5. Individual signals split into S1_KO–S1_NC (Set 1 thresholds, raw) and S2_KO–S2_NC (Set 2 thresholds, raw; 0 when Set 2 disabled). EMA Dir moved to position 6. Public accessor properties renamed to `S1KOSignal`…`S1NCSignal`, `S2KOSignal`…`S2NCSignal`, and `BothSignal` added. |
+| **1.3** | Data Box expanded from 11 to 18 plots. Both Signal added (1 when S1=1 AND S2=1, -1 when S1=-1 AND S2=-1, 0 otherwise) at position 5. Individual signals split into S1_KO–S1_NC (Set 1 thresholds, raw) and S2_KO–S2_NC (Set 2 thresholds, raw; 0 when Set 2 disabled). EMA Dir moved to position 6. Public accessor properties renamed to `S1KOSignal`…`S1NCSignal`, `S2KOSignal`…`S2NCSignal`, and `BothSignal` added. Default comparison operators changed from `Equal` to `GreaterOrEqual` (long) / `LessOrEqual` (short) for all 12 indicator pairs in Set 1 and Set 2, matching GodZillaKilla defaults. |
 | **1.2.1** | All 6 signals enabled by default in both Set 1 and Set 2. Set 1 `RequiredCount` default raised 2 → 3 (avoids signal flood with 6/6 on). HUD Set1/Set2 rows now color by live trigger state: green = long firing, red = short firing, white = watching, dim = off, yellow `[!]` = `RequiredCount` exceeds enabled-signal count. Set1/Set2 lines expanded to show full enabled signal list (`R:3/6: KO, PA, TH, SJ, SU, NC`). EMA label renamed to "EMA Cross:". HUD box widths widened to fit longer rows. |
 | **1.2** | Per-indicator **Require** flags added for both Set 1 and Set 2 (`RequireKOSignal`…`RequireNCSignal`, `G2_RequireKOSignal`…`G2_RequireNCSignal`). A required indicator must appear among the signals that fired in the trigger direction; meeting Required Count without it vetoes the trigger. All default to false. Debug print updated: `Signals=[...]` replaced with `Set1=[...]` and `Set2=[...]`; required indicators prefixed with `+`. |
 | 1.1 | Internal release. |
@@ -43,7 +43,7 @@ GodZuki is the signal indicator layer of the GodZilla Suite. It reads the same s
 
 ## Signal System
 
-GodZuki uses the same signal configuration as GodZillaKilla: six sub-indicators, two independent trigger sets, configurable operators and threshold values per indicator.
+GodZuki uses the same signal configuration as GodZillaKilla: six sub-indicators, two independent trigger sets, configurable operators and threshold values per indicator. Default operators are `GreaterOrEqual` (long) / `LessOrEqual` (short); default thresholds are KO/SJ/SU/NC = ±1, PA/TH Set 1 = ±2, PA/TH Set 2 = ±3.
 
 ### Sub-Indicator Signals
 Each of the six indicators exposes a `Signal_Trade` series. GodZuki reads `Signal_Trade[0]` each bar and computes a normalized −1 / 0 / +1 output using the configured comparison operator and value.

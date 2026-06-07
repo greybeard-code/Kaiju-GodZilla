@@ -1,6 +1,6 @@
 # GodZillaKilla — ATM Trading Strategy
 
-**Version:** 1.8.3
+**Version:** 1.8.4
 **Namespace:** `NinjaTrader.NinjaScript.Strategies.Playr101`
 **Author:** Playr101
 **Credits:** GreyBeard, ninZa.co, RenkoKings, ES, rbro112
@@ -13,6 +13,7 @@ GodZillaKilla is a NinjaTrader 8 strategy that reads signals from the six GodZil
 
 | Version | Summary |
 |---|---|
+| **1.8.4** | Signal operator defaults changed from `Equal` to `GreaterOrEqual` (long) / `LessOrEqual` (short) for all 12 indicator pairs in Set 1 and Set 2. This matches GodZuki's defaults and accepts any signal value at or beyond the threshold (e.g. KO raw=2 now counts as a long vote under the default KO_LongValue=1). Existing saved chart templates are unaffected — serialized operator values are preserved; only fresh instances and "Reset to Defaults" are impacted. |
 | **1.8.3** | **ATM Playback reliability — complete trade lifecycle rewrite.** Previous versions detected trade open/close and computed PnL entirely via ATM API polling (`GetAtmStrategyMarketPosition`, `GetAtmStrategyRealizedProfitLoss`). `GetAtmStrategyRealizedProfitLoss` returns 0 in Playback, causing $0 PnL and no CSV log. 1.8.3 introduces `AtmOpenTrade` — an object populated at entry fill time capturing price, quantity, direction, and signal trigger. PnL is computed from fill prices (`(exitPx – entryPx) × PointValue × qty`), which is accurate in all modes. Entry fill detection uses `OnExecutionUpdate` (fires in Sim/Live) supplemented by `GetAtmStrategyMarketPosition` polling in the tick handler (catches Playback where the execution event does not fire). Close detection uses position polling via `GetAtmStrategyMarketPosition`, with price-based PnL as fallback when the API returns 0. **Defense #9 hardened:** added an age guard (`_atmIdsSetUtc` must be older than the registration timeout) so Defense #9 cannot fire during the brief window between `AtmStrategyCreate` callback and position confirmation on a live entry — previously this cleared freshly submitted IDs before the fill could arrive. **Signal Data Box plots removed:** the 15 transparent plots added in 1.8.2 (Set1/Set2 group signals, S1\_/S2\_ per-indicator signals, Both signal) are removed — GodZuki is the correct place to expose Data Box signal output. **Debug output cleaned up:** all `DIAG:*` diagnostic prints are now gated on `EnableDebug`; `DAILY PNL CHECK` throttled to once per 5 seconds (previously fired at tick rate). |
 | **1.9** | **ATM reliability hardening.** Defense #9 added: evicts zombie ATM IDs in the dead zone where `isAtmStrategyCreated=true` but `_atmPositionConfirmed=false` (neither Defense #3 nor #8 could fire). `State.Terminated` now clears all ATM fields so stale IDs cannot survive a disable/re-enable cycle. ATM template pre-flight validation added: `ValidateAtmTemplate()` checks the template XML file exists on disk before any IDs are generated — a missing template logs a warning at enable time, blocks the entry cleanly (no zombie IDs created), fires a chart `Alert`, and draws a centered on-chart overlay visible even when the dashboard or control panel are hidden. Martingale template validated independently with elevated alert copy ("recovery blocked"). `AtmStrategyCreate` callback extended to handle non-`NoError` codes: clears IDs immediately on failure rather than waiting for Defense #3's 10-second timeout. |
 | **1.8** | Control panel visual overhaul to "noble" dark navy style (matching Whisky). Gradient+glow title text, SVG pill minimize button, custom ControlTemplate buttons with hover/press effects. `ControlPanelSize` property added (`Large`/`Medium`/`Small`/`Minimized` = 100%/75%/50%/title-only). Double-click cycles all four states; pill button toggles `Minimized` ↔ `Large`. CSV log filename now uses `Time[0]` (bar time) instead of `DateTime.Now`, so replay/playback sessions produce correctly dated files. |
@@ -50,6 +51,8 @@ GodZillaKilla instantiates all six GodZilla Suite sub-indicators at `State.DataL
 
 ### Signal Configuration
 Each indicator has independent Long and Short threshold values and comparison operators (`Equal`, `GreaterOrEqual`, `GreaterThan`, `LessOrEqual`, `LessThan`, `NotEqual`).
+
+**Default operators:** `GreaterOrEqual` for long signals, `LessOrEqual` for short signals. Combined with the default threshold values (KO/SJ/SU/NC = ±1, PA/TH Set 1 = ±2, PA/TH Set 2 = ±3), a signal fires when the sub-indicator value meets or exceeds the threshold in the trigger direction — capturing strong signal magnitudes (e.g. KO breakout at raw=2) as well as the baseline magnitude.
 
 ### Trigger Sets
 Two independent group trigger sets can be configured:

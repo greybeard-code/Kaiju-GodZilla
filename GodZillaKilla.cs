@@ -503,7 +503,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 Description = "GodZillaKilla — strategy using direct KingOrderBlock/PANAKanal/ThunderZilla/SuperJumpBoost/SumoPullback/NobleCloud child indicator signals.";
                 Name = "GodZillaKilla";
                 StrategyName = Name;
-                _strategyVersion = "1.8.4 Beta";
+                _strategyVersion = "1.8.4";
 
                 Author = "Playr101";
                 Credits = "GreyBeard, ninZa.co, RenkoKings, ES, rbro999";
@@ -591,18 +591,18 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 NC_LongValue = 1;
                 NC_ShortValue = -1;
 
-                KO_LongOperator = SignalComparisonOperator.Equal;
-                KO_ShortOperator = SignalComparisonOperator.Equal;
-                PA_LongOperator = SignalComparisonOperator.Equal;
-                PA_ShortOperator = SignalComparisonOperator.Equal;
-                TH_LongOperator = SignalComparisonOperator.Equal;
-                TH_ShortOperator = SignalComparisonOperator.Equal;
-                SJ_LongOperator = SignalComparisonOperator.Equal;
-                SJ_ShortOperator = SignalComparisonOperator.Equal;
-                SU_LongOperator = SignalComparisonOperator.Equal;
-                SU_ShortOperator = SignalComparisonOperator.Equal;
-                NC_LongOperator = SignalComparisonOperator.Equal;
-                NC_ShortOperator = SignalComparisonOperator.Equal;
+                KO_LongOperator = SignalComparisonOperator.GreaterOrEqual;
+                KO_ShortOperator = SignalComparisonOperator.LessOrEqual;
+                PA_LongOperator = SignalComparisonOperator.GreaterOrEqual;
+                PA_ShortOperator = SignalComparisonOperator.LessOrEqual;
+                TH_LongOperator = SignalComparisonOperator.GreaterOrEqual;
+                TH_ShortOperator = SignalComparisonOperator.LessOrEqual;
+                SJ_LongOperator = SignalComparisonOperator.GreaterOrEqual;
+                SJ_ShortOperator = SignalComparisonOperator.LessOrEqual;
+                SU_LongOperator = SignalComparisonOperator.GreaterOrEqual;
+                SU_ShortOperator = SignalComparisonOperator.LessOrEqual;
+                NC_LongOperator = SignalComparisonOperator.GreaterOrEqual;
+                NC_ShortOperator = SignalComparisonOperator.LessOrEqual;
 
                 // Optional second same-bar group trigger set
                 EnableGroupTriggerSet2 = false;
@@ -629,21 +629,21 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 G2_SU_ShortValue = -1;
                 G2_UseNCSignals = true;
                 G2_RequireNCSignal = false;
-                G2_NC_LongOperator = SignalComparisonOperator.Equal;
+                G2_NC_LongOperator = SignalComparisonOperator.GreaterOrEqual;
                 G2_NC_LongValue = 1;
-                G2_NC_ShortOperator = SignalComparisonOperator.Equal;
+                G2_NC_ShortOperator = SignalComparisonOperator.LessOrEqual;
                 G2_NC_ShortValue = -1;
 
-                G2_KO_LongOperator = SignalComparisonOperator.Equal;
-                G2_KO_ShortOperator = SignalComparisonOperator.Equal;
-                G2_PA_LongOperator = SignalComparisonOperator.Equal;
-                G2_PA_ShortOperator = SignalComparisonOperator.Equal;
-                G2_TH_LongOperator = SignalComparisonOperator.Equal;
-                G2_TH_ShortOperator = SignalComparisonOperator.Equal;
-                G2_SJ_LongOperator = SignalComparisonOperator.Equal;
-                G2_SJ_ShortOperator = SignalComparisonOperator.Equal;
-                G2_SU_LongOperator = SignalComparisonOperator.Equal;
-                G2_SU_ShortOperator = SignalComparisonOperator.Equal;
+                G2_KO_LongOperator = SignalComparisonOperator.GreaterOrEqual;
+                G2_KO_ShortOperator = SignalComparisonOperator.LessOrEqual;
+                G2_PA_LongOperator = SignalComparisonOperator.GreaterOrEqual;
+                G2_PA_ShortOperator = SignalComparisonOperator.LessOrEqual;
+                G2_TH_LongOperator = SignalComparisonOperator.GreaterOrEqual;
+                G2_TH_ShortOperator = SignalComparisonOperator.LessOrEqual;
+                G2_SJ_LongOperator = SignalComparisonOperator.GreaterOrEqual;
+                G2_SJ_ShortOperator = SignalComparisonOperator.LessOrEqual;
+                G2_SU_LongOperator = SignalComparisonOperator.GreaterOrEqual;
+                G2_SU_ShortOperator = SignalComparisonOperator.LessOrEqual;
 
                 // EMA Filter
                 EnableEmaFilter = false;
