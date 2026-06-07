@@ -257,6 +257,11 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         private string _nativeTradeId                = string.Empty;
         private bool   _nativeTargetsPending         = false;
         private int    _nativeTargetsSettleTicks     = 0;    // ticks remaining before targets submit
+        // Per-trade unique entry signal name ("GzkNB_E1", "GzkNB_E2"…).  Static names
+        // persist in NT8's managed-order registry across strategy restarts, causing
+        // "Order rejected" when the new instance tries to re-enter with the same signal.
+        private int    _nativeEntrySequence          = 0;
+        private string _currentNativeEntrySig        = string.Empty;
 
         private class AtmOpenTrade
         {
@@ -1099,8 +1104,9 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     }
 
                     _nativeBracketsActive = _parsedAtmTemplate != null && _parsedAtmTemplate.IsValid;
-                    if (_nativeBracketsActive)
-                        ConfigureNativeBracketOrders (_parsedAtmTemplate);
+                    // SetStopLoss is now called at entry time with a unique per-trade signal
+                    // name to prevent NT8's managed-order registry from blocking re-entry
+                    // after a crash.  ConfigureNativeBracketOrders is no longer called here.
                 }
 
                 if (CurrentBar >= 0)
@@ -1187,8 +1193,6 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     }
 
                     _nativeBracketsActive = atmOk;
-                    if (_nativeBracketsActive)
-                        ConfigureNativeBracketOrders (_parsedAtmTemplate);
                 }
 
                 if (ChartControl != null && !_uiInitialized)
@@ -5474,9 +5478,16 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
             if (_nativeBracketsActive)
             {
-                string entrySig = NativeBracketPrefix + NativeEntryTag;
-                int    totalQty = _parsedAtmTemplate.TotalQuantity;
-                _nativeTradeId  = "NB_" + DateTime.UtcNow.Ticks.ToString ("X").Substring (Math.Max (0, DateTime.UtcNow.Ticks.ToString ("X").Length - 8));
+                // Generate a unique entry signal name each trade.  Static names persist in
+                // NT8's managed-order registry across strategy restarts; after a crash the
+                // registry still has "GzkNB_E" marked open, blocking the next entry with
+                // "Order rejected".  A sequence suffix gives every trade a fresh name.
+                _nativeEntrySequence++;
+                string entrySig = NativeBracketPrefix + NativeEntryTag + _nativeEntrySequence;
+                _currentNativeEntrySig = entrySig;
+
+                int totalQty = _parsedAtmTemplate.TotalQuantity;
+                _nativeTradeId = "NB_" + DateTime.UtcNow.Ticks.ToString ("X").Substring (Math.Max (0, DateTime.UtcNow.Ticks.ToString ("X").Length - 8));
 
                 _tradeMap[_nativeTradeId] = new TradeRecord
                 {
@@ -5489,12 +5500,14 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     AtmStrategyName = AtmStrategy
                 };
 
-                if (EnableDebug)
-                    Print ($"[{Name}] DIAG:NATIVE_ENTRY | {Time[0]:yyyy-MM-dd HH:mm:ss} | Dir={(isLong?"Long":"Short")} | Template={AtmStrategy} | TradeId={_nativeTradeId} | TotalQty={totalQty} | Brackets={_parsedAtmTemplate.Brackets.Count}");
+                // Configure the stop for this signal right before entry.
+                // Calling SetStopLoss here (OnBarUpdate context) is valid and avoids
+                // DataLoaded pre-configuration with a static signal name.
+                int sharedStop = _parsedAtmTemplate.Brackets[0].StopLossTicks;
+                SetStopLoss (entrySig, CalculationMode.Ticks, sharedStop, false);
 
-                // barsInProgress=0 selects the primary series.
-                // EnterLong(qty, 0, name) would resolve to EnterLong(barsInProgress, qty, name)
-                // with barsInProgress=qty, causing an out-of-range error on a near-empty series.
+                Print ($"[{Name}] DIAG:NATIVE_ENTRY | {Time[0]:yyyy-MM-dd HH:mm:ss} | Dir={(isLong?"Long":"Short")} | Template={AtmStrategy} | TradeId={_nativeTradeId} | TotalQty={totalQty} | Brackets={_parsedAtmTemplate.Brackets.Count} | Sig={entrySig}");
+
                 if (isLong) EnterLong  (0, totalQty, entrySig);
                 else        EnterShort (0, totalQty, entrySig);
             }
@@ -5746,8 +5759,8 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             if (isNativeFill)
             {
                 string orderName   = execution.Order.Name ?? string.Empty;
-                string entrySignal = NativeBracketPrefix + NativeEntryTag;
-                bool   isEntryFill = orderName == entrySignal;
+                string entrySignal = _currentNativeEntrySig;   // unique per trade, e.g. "GzkNB_E3"
+                bool   isEntryFill = !string.IsNullOrEmpty (entrySignal) && orderName == entrySignal;
 
                 if (_openAtmTrade == null && !isNowFlat && isEntryFill)
                 {
@@ -5900,14 +5913,15 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             if (_nativeBracketsActive) CancelNativeBracketTargetOrders ();
             _openAtmTrade         = null;
             _bracketState         = null;
-            _nativeTargetsPending = false; _nativeTargetsSettleTicks = 0;
-            _nativeTradeId        = string.Empty;
-            atmStrategyId         = string.Empty;
-            orderId               = string.Empty;
-            isAtmStrategyCreated  = false;
-            _atmPositionConfirmed = false;
-            _atmIdsSetUtc         = DateTime.MinValue;
-            dailyUnrealizedPnL    = 0.0;
+            _nativeTargetsPending  = false; _nativeTargetsSettleTicks = 0;
+            _nativeTradeId         = string.Empty;
+            _currentNativeEntrySig = string.Empty;
+            atmStrategyId          = string.Empty;
+            orderId                = string.Empty;
+            isAtmStrategyCreated   = false;
+            _atmPositionConfirmed  = false;
+            _atmIdsSetUtc          = DateTime.MinValue;
+            dailyUnrealizedPnL     = 0.0;
         }
 
         private void ClearNormalAtmState (string reason)
@@ -5916,9 +5930,10 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
             if (!string.IsNullOrEmpty (_nativeTradeId))
                 _tradeMap.TryRemove (_nativeTradeId, out _);
-            _nativeTradeId        = string.Empty;
-            _bracketState         = null;
-            _nativeTargetsPending = false; _nativeTargetsSettleTicks = 0;
+            _nativeTradeId         = string.Empty;
+            _currentNativeEntrySig = string.Empty;
+            _bracketState          = null;
+            _nativeTargetsPending  = false; _nativeTargetsSettleTicks = 0;
 
             if (!string.IsNullOrEmpty (atmStrategyId))
                 _tradeMap.TryRemove (atmStrategyId, out _);
@@ -10755,11 +10770,12 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             // so targets are not rejected by NT8's order handling rules.
             if (_nativeTargetsSettleTicks > 0) { _nativeTargetsSettleTicks--; return; }
 
-            ParsedAtmTemplate tpl    = _parsedAtmTemplate;
-            string            entrySig = NativeBracketPrefix + NativeEntryTag;
-            bool              isLong = _openAtmTrade.Direction == MarketPosition.Long;
+            ParsedAtmTemplate tpl      = _parsedAtmTemplate;
+            string            entrySig = _currentNativeEntrySig;   // e.g. "GzkNB_E3"
+            bool              isLong   = _openAtmTrade.Direction == MarketPosition.Long;
 
-            if (tpl == null || !tpl.IsValid) { _nativeTargetsPending = false; _nativeTargetsSettleTicks = 0; return; }
+            if (tpl == null || !tpl.IsValid || string.IsNullOrEmpty (entrySig))
+            { _nativeTargetsPending = false; _nativeTargetsSettleTicks = 0; return; }
 
             for (int i = 0; i < tpl.Brackets.Count; i++)
             {
@@ -10767,7 +10783,9 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 double        targetPx = isLong
                     ? Instrument.MasterInstrument.RoundToTickSize (_openAtmTrade.EntryPrice + b.TargetTicks * TickSize)
                     : Instrument.MasterInstrument.RoundToTickSize (_openAtmTrade.EntryPrice - b.TargetTicks * TickSize);
-                string tgtSig = NativeBracketPrefix + NativeTargetTag + i;
+                // Include sequence so targets are unique per trade — avoids name conflicts
+                // with orphaned targets from a previous crashed trade.
+                string tgtSig = NativeBracketPrefix + NativeTargetTag + i + "_" + _nativeEntrySequence;
 
                 // barsInProgress=0 forces fill simulation against the primary series
                 // OHLC data.  Without it, orders submitted from BIP=1 (tick series)
@@ -10793,7 +10811,8 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             if (template == null || !template.IsValid || template.Brackets.Count == 0) return;
 
             BracketRuntimeState state    = _bracketState;
-            string              entrySig = NativeBracketPrefix + NativeEntryTag;
+            string              entrySig = _currentNativeEntrySig;
+            if (string.IsNullOrEmpty (entrySig)) return;
             BracketConfig       cfg      = template.Brackets[template.Brackets.Count - 1];
 
             bool   isLong      = _openAtmTrade.Direction == MarketPosition.Long;
