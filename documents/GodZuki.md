@@ -1,6 +1,6 @@
 # GodZuki — Signal Indicator
 
-**Version:** 1.3
+**Version:** 1.4 Beta
 **Namespace:** `NinjaTrader.NinjaScript.Indicators.GreyBeard`
 
 GodZuki is the signal indicator layer of the GodZilla Suite. It reads the same six sub-indicators and evaluates the same confluence logic as GodZillaKilla, but executes no trades. Its primary purpose is to feed signals into third-party trade management systems — such as Predator or Infinity Algo — that supply their own entry execution and order management. It is also used for fully manual trading, where the trader takes entries based on GodZuki's visual arrows and Data Box values. Signal history can be audited on any chart, audio alerts trigger on group fires, and all signals are logged to CSV.
@@ -11,6 +11,7 @@ GodZuki is the signal indicator layer of the GodZilla Suite. It reads the same s
 
 | Version | Summary |
 |---|---|
+| **1.4 Beta** | **Confirmation Bars** — new `Confirmation Bars` property (range 0–25, default 0) at the top of the Signals section. When set to N, the arrow and Data Box signal are suppressed after the group trigger fires. On bar N, if price has moved in the signal direction (close higher than signal bar for long, lower for short), the arrow fires and Set1/Set2 values publish. If not, the setup is dropped and the window closes. A new signal on any bar during the wait restarts the clock. Default 0 = immediate signal, identical to prior behavior. Applies independently to Set 1 and Set 2. |
 | **1.3** | Data Box expanded from 11 to 18 plots. Both Signal added (1 when S1=1 AND S2=1, -1 when S1=-1 AND S2=-1, 0 otherwise) at position 5. Individual signals split into S1_KO–S1_NC (Set 1 thresholds, raw) and S2_KO–S2_NC (Set 2 thresholds, raw; 0 when Set 2 disabled). EMA Dir moved to position 6. Public accessor properties renamed to `S1KOSignal`…`S1NCSignal`, `S2KOSignal`…`S2NCSignal`, and `BothSignal` added. Default comparison operators changed from `Equal` to `GreaterOrEqual` (long) / `LessOrEqual` (short) for all 12 indicator pairs in Set 1 and Set 2, matching GodZillaKilla defaults. |
 | **1.2.1** | All 6 signals enabled by default in both Set 1 and Set 2. Set 1 `RequiredCount` default raised 2 → 3 (avoids signal flood with 6/6 on). HUD Set1/Set2 rows now color by live trigger state: green = long firing, red = short firing, white = watching, dim = off, yellow `[!]` = `RequiredCount` exceeds enabled-signal count. Set1/Set2 lines expanded to show full enabled signal list (`R:3/6: KO, PA, TH, SJ, SU, NC`). EMA label renamed to "EMA Cross:". HUD box widths widened to fit longer rows. |
 | **1.2** | Per-indicator **Require** flags added for both Set 1 and Set 2 (`RequireKOSignal`…`RequireNCSignal`, `G2_RequireKOSignal`…`G2_RequireNCSignal`). A required indicator must appear among the signals that fired in the trigger direction; meeting Required Count without it vetoes the trigger. All default to false. Debug print updated: `Signals=[...]` replaced with `Set1=[...]` and `Set2=[...]`; required indicators prefixed with `+`. |
@@ -94,7 +95,7 @@ When either Set 1 or Set 2 fires, the bar background is highlighted with a confi
 The SharpDX overlay panel shows four fixed rows:
 
 ```
-GodZuki  v1.3
+GodZuki  v1.4 Beta
 ─────────────────────────────────────────────────────────────
 EMA Cross: ON   21=19843.50 / 50=19856.25   ← green=bullish, red=bearish, dim=off
 Set1 Enabled R:3/6: KO, PA, TH, SJ, SU, NC ← green=long, red=short, white=watching, dim=off

@@ -345,6 +345,14 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         private string _strategyVersion = "";
         private string Credits = "";
 
+        private int    _confirmPendingDir   = 0;
+        private int    _confirmPendingBars  = 0;
+        private double _confirmPendingClose = 0;
+        private bool   _confirmSavedUsesKO, _confirmSavedUsesPA, _confirmSavedUsesTH;
+        private bool   _confirmSavedUsesSJ, _confirmSavedUsesSU, _confirmSavedUsesNC;
+        private int    _confirmSavedGroupSize;
+        private string _confirmSavedGroupName = string.Empty;
+
         // Indicators
         private gbKingOrderBlock _king;
         private gbPANAKanal _pana;
@@ -503,7 +511,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 Description = "GodZillaKilla — strategy using direct KingOrderBlock/PANAKanal/ThunderZilla/SuperJumpBoost/SumoPullback/NobleCloud child indicator signals.";
                 Name = "GodZillaKilla";
                 StrategyName = Name;
-                _strategyVersion = "1.8.4";
+                _strategyVersion = "1.9 Beta";
 
                 Author = "Playr101";
                 Credits = "GreyBeard, ninZa.co, RenkoKings, ES, rbro999";
@@ -565,6 +573,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 ShowGroupSignalTrackingStats = true;
 
                 EnableSignalTracking = true;
+                ConfirmationBars = 0;
                 GroupTriggerSet1RequiredCount = 1;
                 UseKOSignals = true;
                 RequireKOSignal = false;
@@ -829,6 +838,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 ShowSUSignalArrows = false;
                 ShowNCSignalArrows = false;
                 ShowGroupTriggerArrows = true;
+                ShowTradeMarker = true;
 
                 ShowKOSignalArrowLabels = false;
                 ShowPASignalArrowLabels = false;
@@ -1123,6 +1133,10 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 _lastFixedPerfSyncUtc = DateTime.MinValue;
 
                 CaptureFreshStartInheritedPositionBaseline ();
+
+                _confirmPendingDir   = 0;
+                _confirmPendingBars  = 0;
+                _confirmPendingClose = 0;
 
                 _strategyEnabled = true;
                 _armLong = true;
@@ -1440,6 +1454,59 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     goShort = false;
             }
 
+            // 10b. Confirmation Bars gate
+            // When signal fires: record close, start N-bar wait. On bar N, check price direction.
+            int confirmBars = Math.Max(0, Math.Min(25, ConfirmationBars));
+            if (confirmBars > 0)
+            {
+                if (goLong || goShort)
+                {
+                    _confirmPendingDir   = goLong ? 1 : -1;
+                    _confirmPendingBars  = confirmBars;
+                    _confirmPendingClose = Close[0];
+                    _confirmSavedUsesKO  = activeGroup != null && activeGroup.UsesKO;
+                    _confirmSavedUsesPA  = activeGroup != null && activeGroup.UsesPA;
+                    _confirmSavedUsesTH  = activeGroup != null && activeGroup.UsesTH;
+                    _confirmSavedUsesSJ  = activeGroup != null && activeGroup.UsesSJ;
+                    _confirmSavedUsesSU  = activeGroup != null && activeGroup.UsesSU;
+                    _confirmSavedUsesNC  = activeGroup != null && activeGroup.UsesNC;
+                    _confirmSavedGroupSize = groupTriggeredSize;
+                    _confirmSavedGroupName = groupTriggeredName;
+                    goLong  = false;
+                    goShort = false;
+                }
+                else if (_confirmPendingDir != 0)
+                {
+                    _confirmPendingBars--;
+                    if (_confirmPendingBars <= 0)
+                    {
+                        bool ok = (_confirmPendingDir > 0 && Close[0] > _confirmPendingClose)
+                               || (_confirmPendingDir < 0 && Close[0] < _confirmPendingClose);
+                        if (ok)
+                        {
+                            goLong  = _confirmPendingDir == 1;
+                            goShort = _confirmPendingDir == -1;
+                            activeGroup = new GroupTriggerResult
+                            {
+                                Long        = goLong,
+                                Short       = goShort,
+                                UsesKO      = _confirmSavedUsesKO,
+                                UsesPA      = _confirmSavedUsesPA,
+                                UsesTH      = _confirmSavedUsesTH,
+                                UsesSJ      = _confirmSavedUsesSJ,
+                                UsesSU      = _confirmSavedUsesSU,
+                                UsesNC      = _confirmSavedUsesNC,
+                                GroupSize   = _confirmSavedGroupSize,
+                                TriggerName = _confirmSavedGroupName
+                            };
+                            groupTriggeredSize = _confirmSavedGroupSize;
+                            groupTriggeredName = _confirmSavedGroupName;
+                        }
+                        _confirmPendingDir = 0;
+                    }
+                }
+            }
+
             // 11. Reversal Submission
             if (CanUseReverseOnAlternateSignal () && !pendingReverseActive && !HasPendingEntryOrder ())
             {
@@ -1459,6 +1526,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                         groupTriggeredSize,
                         groupTriggeredName);
 
+                    DrawTradeMarker (-1);
                     FlattenEverything ("Reverse on alternate SHORT signal");
                     return;
                 }
@@ -1476,6 +1544,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                         groupTriggeredSize,
                         groupTriggeredName);
 
+                    DrawTradeMarker (1);
                     FlattenEverything ("Reverse on alternate LONG signal");
                     return;
                 }
@@ -1503,6 +1572,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                         groupTriggeredSize,
                         groupTriggeredName,
                         "Normal long entry");
+                    DrawTradeMarker (1);
                 }
                 else if (goShort && _armShort)
                 {
@@ -1517,6 +1587,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                         groupTriggeredSize,
                         groupTriggeredName,
                         "Normal short entry");
+                    DrawTradeMarker (-1);
                 }
             }
 
@@ -3352,6 +3423,12 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     if (groupSignal != 0 && groupSize > 0)
                         DrawSignalArrow ("GZ_GROUP_" + groupSize + "_", groupSignal, true, GroupTriggerBrush, 12, ShowGroupTriggerArrowLabel, BuildGroupTriggerArrowLabel (groupSize));
                 }
+
+                // Trade marker — drawn here (pre-historical-gate) so T appears on historical bars.
+                // Only for immediate mode (ConfirmationBars == 0); confirmation mode draws from
+                // the entry logic at realtime when the price check passes.
+                if (ConfirmationBars <= 0 && groupSignal != 0)
+                    DrawTradeMarker (groupSignal);
             }
             catch (Exception ex)
             {
@@ -3460,6 +3537,32 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             {
                 if (EnableDebug)
                     Print ($"{Time[0]} | DrawSignalArrow ERROR | Tag={tagPrefix} | Signal={signal} | ArrowOffset={ArrowOffset} | TextOffset={SignalArrowTextOffsetTicks} | Error={ex.Message}");
+            }
+        }
+
+        private void DrawTradeMarker (int direction)
+        {
+            if (!ShowTradeMarker || direction == 0) return;
+            if (CurrentBar < 0 || TickSize <= 0) return;
+            if (double.IsNaN (High[0]) || double.IsNaN (Low[0])) return;
+
+            const string prefix = "GZK_TRD_T_";
+            int oldBar = CurrentBar - DRAW_TAG_KEEP;
+            if (oldBar >= 0) try { RemoveDrawObject (prefix + oldBar); } catch { }
+
+            SimpleFont font = signalArrowFont ?? new SimpleFont ("Arial", 10) { Bold = true };
+            Brush brush = direction > 0 ? Brushes.Lime : Brushes.Red;
+            double offset = (Math.Max (0, ArrowOffset) + 2) * TickSize;
+            double price  = direction > 0 ? Low[0] - offset : High[0] + offset;
+
+            try
+            {
+                Draw.Text (this, prefix + CurrentBar, false, "T", 0, price, 0, brush, font, TextAlignment.Center, Brushes.Transparent, Brushes.Transparent, 0);
+            }
+            catch (Exception ex)
+            {
+                if (EnableDebug)
+                    Print ($"{Time[0]} | DrawTradeMarker ERROR | Dir={direction} | {ex.Message}");
             }
         }
 
@@ -8358,9 +8461,10 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
         // ==================== Signals ====================
         [NinjaScriptProperty]
-        [Display (Name = "Enable Signal Tracking", Order = 0, GroupName = "Signals")]
-        [RefreshProperties (RefreshProperties.All)]
-        public bool EnableSignalTracking
+        [Range (0, 25)]
+        [Display (Name = "Confirmation Bars", Order = -1, GroupName = "Signals",
+            Description = "Bars to wait after the group trigger fires. On bar N, if price is still moving in the signal direction, the entry is submitted. 0 = immediate (default).")]
+        public int ConfirmationBars
         {
             get; set;
         }
@@ -10182,7 +10286,16 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Show Individual Signal Stats", Order = 3, GroupName = "Dashboard Display",
+        [Display (Name = "Enable Signal Tracking", Order = 3, GroupName = "Dashboard Display",
+            Description = "Tracks win/loss performance per indicator and per confluence combo. Results appear in the dashboard and are printed to the output window on trade close.")]
+        [RefreshProperties (RefreshProperties.All)]
+        public bool EnableSignalTracking
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Show Individual Signal Stats", Order = 4, GroupName = "Dashboard Display",
             Description = "When enabled, displays individual tracking (T/Lg/Sh/W/L) for each indicator on the dashboard.")]
         public bool ShowIndividualSignalStats
         {
@@ -10190,7 +10303,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         [NinjaScriptProperty]
-        [Display (Name = "Show Group Signal Stats", Order = 4, GroupName = "Dashboard Display",
+        [Display (Name = "Show Group Signal Stats", Order = 5, GroupName = "Dashboard Display",
             Description = "When enabled, displays the confluence/group signal tracking (T/Lg/Sh/W/L) on the dashboard.")]
         public bool ShowGroupSignalTrackingStats
         {
@@ -10238,6 +10351,14 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         }
 
         // ==================== Indicator Display ====================
+        [NinjaScriptProperty]
+        [Display (Name = "Show Trade Marker", Order = -1, GroupName = "Indicator Display",
+            Description = "Draw a 'T' on the chart at each bar where an entry is submitted.")]
+        public bool ShowTradeMarker
+        {
+            get; set;
+        }
+
         // -------------------- Indicator Display: BarStatus --------------------
         [NinjaScriptProperty]
         [Display (Name = "BarStatus: Show Indicator", Order = 0, GroupName = "Indicator Display",

@@ -68,7 +68,7 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 		}
 
 		#region Variables
-		private string _version = "1.3";
+		private string _version = "1.4 Beta";
 
 		private gbKingOrderBlock _king;
 		private gbPANAKanal      _pana;
@@ -90,6 +90,13 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 		private Dictionary<string, string> _lastAudioAlertStampByKey = new Dictionary<string, string> ();
 		private StreamWriter _logWriter;
 		private int          _lastLoggedBar = -1;
+
+		private int    _s1PendingDir   = 0;
+		private int    _s1PendingBars  = 0;
+		private double _s1SignalClose  = 0;
+		private int    _s2PendingDir   = 0;
+		private int    _s2PendingBars  = 0;
+		private double _s2SignalClose  = 0;
 
 		// HUD snapshot (data thread writes, UI thread reads)
 		private string   _hudTitle      = "GodZuki";
@@ -172,6 +179,9 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 				G2_UseSJSignals = true;  G2_RequireSJSignal = false; G2_SJ_LongOperator = GodZukiSignalOperator.GreaterOrEqual; G2_SJ_LongValue = 1;  G2_SJ_ShortOperator = GodZukiSignalOperator.LessOrEqual; G2_SJ_ShortValue = -1;
 				G2_UseSUSignals = true;  G2_RequireSUSignal = false; G2_SU_LongOperator = GodZukiSignalOperator.GreaterOrEqual; G2_SU_LongValue = 1;  G2_SU_ShortOperator = GodZukiSignalOperator.LessOrEqual; G2_SU_ShortValue = -1;
 				G2_UseNCSignals = true;  G2_RequireNCSignal = false; G2_NC_LongOperator = GodZukiSignalOperator.GreaterOrEqual; G2_NC_LongValue = 1;  G2_NC_ShortOperator = GodZukiSignalOperator.LessOrEqual; G2_NC_ShortValue = -1;
+
+				// Confirmation
+				ConfirmationBars = 0;
 
 				// Filters
 				EnableEmaFilter = false; EmaShortPeriod = 21; EmaLongPeriod = 50;
@@ -358,6 +368,51 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 				// Set 1 and Set 2 evaluated independently — both can fire on the same bar
 				int s1Vis=(set1!=null&&(set1.Long||set1.Short)&&SignalVisualFilterPassed(set1.Long?1:-1))?(set1.Long?1:-1):0;
 				int s2Vis=(set2!=null&&(set2.Long||set2.Short)&&SignalVisualFilterPassed(set2.Long?1:-1))?(set2.Long?1:-1):0;
+				int confirmBars = Math.Max(0, Math.Min(25, ConfirmationBars));
+				if (confirmBars > 0)
+				{
+					// Set 1: new signal starts wait window; after N bars check price direction
+					if (s1Vis != 0)
+					{
+						_s1PendingDir  = s1Vis;
+						_s1PendingBars = confirmBars;
+						_s1SignalClose = Close[0];
+						s1Vis = 0;
+					}
+					else if (_s1PendingDir != 0)
+					{
+						_s1PendingBars--;
+						if (_s1PendingBars <= 0)
+						{
+							bool ok = (_s1PendingDir > 0 && Close[0] > _s1SignalClose)
+									|| (_s1PendingDir < 0 && Close[0] < _s1SignalClose);
+							s1Vis = ok ? _s1PendingDir : 0;
+							_s1PendingDir  = 0;
+							_s1SignalClose = 0;
+						}
+					}
+
+					// Set 2
+					if (s2Vis != 0)
+					{
+						_s2PendingDir  = s2Vis;
+						_s2PendingBars = confirmBars;
+						_s2SignalClose = Close[0];
+						s2Vis = 0;
+					}
+					else if (_s2PendingDir != 0)
+					{
+						_s2PendingBars--;
+						if (_s2PendingBars <= 0)
+						{
+							bool ok = (_s2PendingDir > 0 && Close[0] > _s2SignalClose)
+									|| (_s2PendingDir < 0 && Close[0] < _s2SignalClose);
+							s2Vis = ok ? _s2PendingDir : 0;
+							_s2PendingDir  = 0;
+							_s2SignalClose = 0;
+						}
+					}
+				}
 
 				if (EnableDebug&&(s1Vis!=0||s2Vis!=0||(set1!=null&&(set1.Long||set1.Short))||(set2!=null&&(set2.Long||set2.Short))))
 				{
@@ -401,10 +456,8 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 				// Output signals → Values[2-10] (data box + programmatic access)
 				// Set1/Set2 are EMA-filtered; individual signals are pre-filter (raw computed)
 				// -1 = short  |  0 = flat / inactive or filtered  |  1 = long
-				int s1Out = (set1!=null&&(set1.Long||set1.Short)&&SignalVisualFilterPassed(set1.Long?1:-1))
-							? (set1.Long?1:-1) : 0;
-				int s2Out = (set2!=null&&(set2.Long||set2.Short)&&SignalVisualFilterPassed(set2.Long?1:-1))
-							? (set2.Long?1:-1) : 0;
+				int s1Out = s1Vis;
+				int s2Out = s2Vis;
 				int emaOut = 0;
 				if (EnableEmaFilter&&_emaShortFilter!=null&&_emaLongFilter!=null
 					&&CurrentBar>=Math.Max(EmaShortPeriod,EmaLongPeriod))
@@ -940,6 +993,9 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 		// ── Signals: Set 1 ───────────────────────────────────────────────────────
 		[NinjaScriptProperty][Range(1,6)][Display(Name="Set 1 Required Count",Order=0,GroupName="Signals",Description="Number of enabled Set 1 signals that must align on the same bar.")]
 		public int GroupTriggerSet1RequiredCount{get;set;}
+
+		[NinjaScriptProperty][Range(0,25)][Display(Name="Confirmation Bars",Order=-1,GroupName="Signals",Description="Bars to wait after the group trigger fires before publishing the signal. On the Nth bar, if price is still moving in the signal direction, the arrow and alert fire. 0 = immediate (default).")]
+		public int ConfirmationBars{get;set;}
 
 		[NinjaScriptProperty][Display(Name="Set 1 Use KingOrderBlock",Order=10,GroupName="Signals")][RefreshProperties(RefreshProperties.All)]
 		public bool UseKOSignals{get;set;}
