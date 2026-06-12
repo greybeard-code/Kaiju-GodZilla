@@ -53,7 +53,7 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
             Custom
         }
 
-        private List<TextLine> list;
+        private volatile List<TextLine> list;
 
         private class TextColumn
         {
@@ -111,10 +111,18 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
         private const float IMPACT_PAD = 10;
         private const float DESC_PAD = 0;
 
-        private NewsEvent[] newsEvents = null;
+        private volatile NewsEvent[] newsEvents = null;
 
         private DateTime lastNewsUpdate = DateTime.MinValue;
+        private volatile bool _loadInProgress = false;
         private string lastLoadError;
+
+        // Cached DirectWrite TextFormats — created/disposed on render target change (Fix 6)
+        private TextFormat _fmtDefault;
+        private TextFormat _fmtHeader;
+        private TextFormat _fmtLineAlert;
+        private TextFormat _fmtTitle;
+        private RenderTarget _lastSeenRenderTarget;
 
         private float widestTimeCol = 0;
         private float widestImpactCol = 0;
@@ -180,7 +188,7 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
                 DrawVerticalGridLines = true;
                 PaintPriceMarkers = true;
                 ScaleJustification = ScaleJustification.Right;
-                IsSuspendedWhileInactive = true;
+                IsSuspendedWhileInactive = false;
 
                 USOnlyEvents = true;
                 Debug = false;
@@ -228,6 +236,10 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
                 list = new List<TextLine> ();
 
                 LoadNews ();
+            }
+            else if (State == State.Terminated)
+            {
+                DisposeTextFormats ();
             }
         }
 
@@ -280,7 +292,7 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
             if (!ShowNewsDisplay)
                 return;
 
-            if (ChartPanel == null || RenderTarget == null || list == null || list.Count == 0)
+            if (ChartPanel == null || RenderTarget == null)
                 return;
 
             if (defaultFont == null)
@@ -292,23 +304,31 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
             if (lineAlertFont == null)
                 lineAlertFont = new SimpleFont ("Arial", 10) { Bold = true, Italic = true };
 
-            TextFormat formatDefaultFont = null;
-            TextFormat formatHeaderFont = null;
-            TextFormat formatLineAlertFont = null;
-            TextFormat formatTitleFont = null;
+            // Recreate cached TextFormats when the render target changes (device loss / resize)
+            if (!object.ReferenceEquals (RenderTarget, _lastSeenRenderTarget))
+            {
+                DisposeTextFormats ();
+                _lastSeenRenderTarget = RenderTarget;
+            }
+
+            if (_fmtDefault == null)
+            {
+                _fmtDefault   = defaultFont.ToDirectWriteTextFormat ();
+                var hf = new SimpleFont (defaultFont.FamilySerialize, (int)Math.Round (defaultFont.Size)) { Bold = true };
+                _fmtHeader    = hf.ToDirectWriteTextFormat ();
+                _fmtLineAlert = lineAlertFont.ToDirectWriteTextFormat ();
+                _fmtTitle     = titleFont.ToDirectWriteTextFormat ();
+            }
+
+            // Take a snapshot so the UI thread never races with BuildList's list assignment
+            List<TextLine> snapshot = list;
 
             try
             {
-                formatDefaultFont = defaultFont.ToDirectWriteTextFormat ();
-
-                SimpleFont headerFont = new SimpleFont (defaultFont.FamilySerialize, (int)Math.Round (defaultFont.Size))
-                {
-                    Bold = true
-                };
-
-                formatHeaderFont = headerFont.ToDirectWriteTextFormat ();
-                formatLineAlertFont = lineAlertFont.ToDirectWriteTextFormat ();
-                formatTitleFont = titleFont.ToDirectWriteTextFormat ();
+                TextFormat formatDefaultFont  = _fmtDefault;
+                TextFormat formatHeaderFont   = _fmtHeader;
+                TextFormat formatLineAlertFont = _fmtLineAlert;
+                TextFormat formatTitleFont    = _fmtTitle;
 
                 RenderTarget.AntialiasMode = SharpDX.Direct2D1.AntialiasMode.Aliased;
 
@@ -321,7 +341,10 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
                 float renderWidth = Math.Max (1, ChartPanel.W);
                 float renderHeight = Math.Max (1, ChartPanel.H);
 
-                foreach (TextLine line in list)
+                if (snapshot == null || snapshot.Count == 0)
+                    return;
+
+                foreach (TextLine line in snapshot)
                 {
                     if (line == null)
                         continue;
@@ -356,7 +379,7 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
 
                 float rowHeight = Math.Max (1, totalHeight + 3);
                 float blockWidth = Math.Max (1, longestLine + 10);
-                float blockHeight = Math.Max (1, (rowHeight * list.Count) + 10);
+                float blockHeight = Math.Max (1, (rowHeight * snapshot.Count) + 10);
 
                 Vector2 startPoint = GetDisplayStartPoint (renderWidth, renderHeight, blockWidth, blockHeight);
 
@@ -377,9 +400,9 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
                     }
                 }
 
-                for (int i = 0; i < list.Count; i++)
+                for (int i = 0; i < snapshot.Count; i++)
                 {
-                    TextLine line = list[i];
+                    TextLine line = snapshot[i];
 
                     if (line == null)
                         continue;
@@ -426,20 +449,6 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
             {
                 if (Debug)
                     Print ("OnRender error in NewsSignals: " + ex);
-            }
-            finally
-            {
-                if (formatDefaultFont != null)
-                    formatDefaultFont.Dispose ();
-
-                if (formatHeaderFont != null)
-                    formatHeaderFont.Dispose ();
-
-                if (formatLineAlertFont != null)
-                    formatLineAlertFont.Dispose ();
-
-                if (formatTitleFont != null)
-                    formatTitleFont.Dispose ();
             }
         }
 
@@ -602,16 +611,20 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
             if (Debug)
                 Print ("Building List. lastNewsPtr: " + lastNewsPtr + " newsItemPtr: " + newsItemPtr);
 
-            list = new List<TextLine> ();
+            // Build into a local list, then publish atomically so OnRender never sees a half-built list
+            var newList = new List<TextLine> ();
 
             TextLine line = new TextLine (defaultFont, headerTitleBrush ?? defaultTextBrush ?? Brushes.White);
             line.timeColumn = new TextColumn (TIME_PAD, TIME);
             line.impactColumn = new TextColumn (IMPACT_PAD, IMPACT);
             line.descColumn = new TextColumn (DESC_PAD, DESC);
-            list.Add (line);
+            newList.Add (line);
 
             if (newsEvents == null || newsEvents.Length == 0 || newsItemPtr < 0)
+            {
+                list = newList;
                 return;
+            }
 
             int lineCnt = 0;
 
@@ -714,8 +727,10 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
                     templine = string.Format ("{0}{1} ({2}/{3})", USOnlyEvents ? string.Empty : country + ": ", title, previous, forecast);
 
                 line.descColumn = new TextColumn (DESC_PAD, templine);
-                list.Add (line);
+                newList.Add (line);
             }
+
+            list = newList;  // atomic publish — UI thread always sees a complete list
         }
 
         private string BuildAlertKey (NewsEvent item)
@@ -732,8 +747,9 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
 
         private void LoadNews ()
         {
-            // Kick off HTTP fetch on a background thread to avoid blocking the NT8 data thread
-            lastNewsUpdate = DateTime.Now;
+            if (_loadInProgress)
+                return;
+            _loadInProgress = true;
             System.Threading.Tasks.Task.Run (() => LoadNewsBackground ());
         }
 
@@ -834,10 +850,14 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
                                 if (Debug)
                                     Print ("Succesfully parsed datetime: " + newsEvent.DateTimeLocal.ToString () + " to local time.");
 
-                                DateTime startTime = DateTime.Now;
-                                DateTime endTime = startTime.AddDays (1);
+                                DateTime now = DateTime.Now;
+                                // Keep events within PostNewsBlockMinutes of the past so
+                                // UpdateNewsBlockState can activate the post-news trading block.
+                                DateTime blockCutoff = now.AddMinutes (-Math.Max (0, PostNewsBlockMinutes));
+                                bool withinTimeWindow = newsEvent.DateTimeLocal >= blockCutoff;
+                                bool withinDateFilter = !TodaysNewsOnly || newsEvent.DateTimeLocal.Date <= now.Date;
 
-                                if (newsEvent.DateTimeLocal >= startTime && (!TodaysNewsOnly || newsEvent.DateTimeLocal.Date < endTime.Date))
+                                if (withinTimeWindow && withinDateFilter)
                                 {
                                     newsEvent.ID = ++itemId;
                                     newsEvent.Country = GetNodeText (eventNode, "country");
@@ -862,17 +882,18 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
                             }
 
                             newsEvents = eventList.ToArray ();
+                            lastNewsUpdate = DateTime.Now;  // stamp only on successful fetch
 
                             if (Debug)
                                 Print ("Added a total of " + eventList.Count + " events to array.");
+
+                            if (EnableCsvLog)
+                                WriteCsvLog (eventList);
                         }
                     }
                     else
                     {
-                        if (newsResp == null)
-                            throw new Exception ("Web response was null.");
-                        else
-                            throw new Exception ("Web response status code = " + newsResp.StatusCode.ToString ());
+                        throw new Exception ("Web response status code = " + newsResp.StatusCode.ToString ());
                     }
                 }
             }
@@ -882,6 +903,57 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
                 Log ("LoadNews error in NewsSignals: " + ex.ToString (), LogLevel.Information);
                 lastLoadError = ex.Message;
             }
+            finally
+            {
+                _loadInProgress = false;
+            }
+        }
+
+        private void WriteCsvLog (List<NewsEvent> events)
+        {
+            try
+            {
+                string path = Path.Combine (NinjaTrader.Core.Globals.UserDataDir, "NewsSignals_" + DateTime.Now.ToString ("yyyyMMdd_HHmmss") + ".csv");
+                using (var writer = new StreamWriter (path, false, Encoding.UTF8))
+                {
+                    writer.WriteLine ("ID,Title,Country,Date,Time,Impact,Forecast,Previous,DateTimeLocal");
+                    foreach (var e in events)
+                        writer.WriteLine (string.Format ("{0},{1},{2},{3},{4},{5},{6},{7},{8}",
+                            e.ID,
+                            CsvQuote (e.Title),
+                            CsvQuote (e.Country),
+                            CsvQuote (e.Date),
+                            CsvQuote (e.Time),
+                            CsvQuote (e.Impact),
+                            CsvQuote (e.Forecast),
+                            CsvQuote (e.Previous),
+                            e.DateTimeLocal.ToString ("O", CultureInfo.InvariantCulture)));
+                }
+
+                if (Debug)
+                    Print ("NewsSignals CSV log written: " + path);
+            }
+            catch (Exception ex)
+            {
+                if (Debug)
+                    Print ("NewsSignals CSV log error: " + ex.Message);
+            }
+        }
+
+        private string CsvQuote (string s)
+        {
+            if (string.IsNullOrEmpty (s)) return string.Empty;
+            if (s.IndexOfAny (new[] { ',', '"', '\n', '\r' }) >= 0)
+                return "\"" + s.Replace ("\"", "\"\"") + "\"";
+            return s;
+        }
+
+        private void DisposeTextFormats ()
+        {
+            if (_fmtDefault   != null) { _fmtDefault.Dispose ();   _fmtDefault   = null; }
+            if (_fmtHeader    != null) { _fmtHeader.Dispose ();    _fmtHeader    = null; }
+            if (_fmtLineAlert != null) { _fmtLineAlert.Dispose (); _fmtLineAlert = null; }
+            if (_fmtTitle     != null) { _fmtTitle.Dispose ();     _fmtTitle     = null; }
         }
 
         private string GetNodeText (XmlNode node, string childName)

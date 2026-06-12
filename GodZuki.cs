@@ -68,7 +68,7 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 		}
 
 		#region Variables
-		private string _version = "1.4 Beta";
+		private string _version = "1.4";
 
 		private gbKingOrderBlock _king;
 		private gbPANAKanal      _pana;

@@ -511,7 +511,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 Description = "GodZillaKilla — strategy using direct KingOrderBlock/PANAKanal/ThunderZilla/SuperJumpBoost/SumoPullback/NobleCloud child indicator signals.";
                 Name = "GodZillaKilla";
                 StrategyName = Name;
-                _strategyVersion = "1.9 Beta";
+                _strategyVersion = "1.9";
 
                 Author = "Playr101";
                 Credits = "GreyBeard, ninZa.co, RenkoKings, ES, rbro999";
@@ -8272,7 +8272,8 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     "EntryExitLongColor",
                     "EntryExitShortColor",
                     "ShowEntryExitLabels",
-                    "EntryExitTextSize");
+                    "EntryExitTextSize",
+                    "EntryExitTextOffsetTicks");
 
                 return;
             }
@@ -8284,7 +8285,8 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     "EntryExitLongColor",
                     "EntryExitShortColor",
                     "ShowEntryExitLabels",
-                    "EntryExitTextSize");
+                    "EntryExitTextSize",
+                    "EntryExitTextOffsetTicks");
 
                 return;
             }
