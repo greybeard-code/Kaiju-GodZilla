@@ -9,7 +9,7 @@ A NinjaTrader 8 trading system built around six specialized signal indicators un
 ## Components
 
 ### GodZillaKilla — ATM Trading Strategy
-*Current version: 1.9.1 Beta*
+*Current version: 1.9.1*
 
 Automated NinjaTrader 8 strategy that reads signals from all six GodZilla Suite sub-indicators and executes ATM or Fixed-Ticks trades based on configurable confluence rules. Includes session filters, EMA filter, news filter, daily PnL limits, martingale recovery, a full SharpDX dashboard, and a floating "noble" dark navy control panel with drag, scale, and minimize support.
 
