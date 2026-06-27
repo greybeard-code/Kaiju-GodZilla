@@ -483,7 +483,7 @@ public class gbSuperJumpBoost : Indicator
 	public string Website => "https://greybeardconsulting.net/";
 
 	[Display(Name = "Version", Order = 10, GroupName = "Developer")]
-	public string Version => "1.1";
+	public string Version => "1.1.1 Beta";
 
 	[Display(Name = "Screen DPI", Order = 100, GroupName = "General")]
 	public int ScreenDPI { get; set; }
@@ -1756,14 +1756,16 @@ public class gbSuperJumpBoost : Indicator
 			double valueAt = ((!flag) ? Low : High).GetValueAt(barIndex);
 			int num4 = chartScale.GetYByValue(valueAt) - num * 10;
 			RectangleF val = new RectangleF(num3, (float)num4, num2, (float)(-num) * 2.1474836E+09f);
-			RenderTarget.FillRectangle(val, DxExtensions.ToDxBrush(brush, RenderTarget));
+			using (SharpDX.Direct2D1.Brush dxBrush = DxExtensions.ToDxBrush(brush, RenderTarget))
+				RenderTarget.FillRectangle(val, dxBrush);
 			Brush brush2 = ((!flag) ? brushBarHighlightCoreLineBearish : brushBarHighlightCoreLineBullish);
 			if (!BrushExtensions.IsTransparent(brush2))
 			{
 				float num5 = ((HighlightWidthPercent != 100) ? Math.Max(1f, (float)(barPaintWidth * HighlightWidthPercent) / 100f) : ((float)barPaintWidth));
 				float num6 = (float)ChartControl.GetXByBarIndex(ChartBars, barIndex) - num5 / 2f;
 				RectangleF val2 = new RectangleF(num6, (float)num4, num5, (float)(-num) * 2.1474836E+09f);
-				RenderTarget.FillRectangle(val2, DxExtensions.ToDxBrush(brush2, RenderTarget));
+				using (SharpDX.Direct2D1.Brush dxBrush2 = DxExtensions.ToDxBrush(brush2, RenderTarget))
+					RenderTarget.FillRectangle(val2, dxBrush2);
 			}
 		}
 	}
@@ -1886,7 +1888,8 @@ public class gbSuperJumpBoost : Indicator
 			Vector2 val2 = new Vector2(num2, num3);
 			AntialiasMode antialiasMode = RenderTarget.AntialiasMode;
 			RenderTarget.AntialiasMode = (AntialiasMode)0;
-			RenderTarget.DrawLine(val, val2, DxExtensions.ToDxBrush(brush, RenderTarget), lineWidth, strokeStyle);
+			using (SharpDX.Direct2D1.Brush dxBrush = DxExtensions.ToDxBrush(brush, RenderTarget))
+				RenderTarget.DrawLine(val, val2, dxBrush, lineWidth, strokeStyle);
 			RenderTarget.AntialiasMode = antialiasMode;
 		}
 	}
@@ -2014,7 +2017,8 @@ public class gbSuperJumpBoost : Indicator
 					val2 = new Vector2(num3, num);
 					Brush brush = (isNaked ? ((!isMaximum) ? brushNakedLevelMinimum : brushNakedLevelMaximum) : ((!isMaximum) ? brushTestedLevelMinimum : brushTestedLevelMaximum));
 					Stroke val3 = (isNaked ? ((!isMaximum) ? ExtremeIntactLevelBottom : ExtremeIntactLevelTop) : ((!isMaximum) ? ExtremeBrokenLevelBottom : ExtremeBrokenLevelTop));
-					RenderTarget.DrawLine(val, val2, DxExtensions.ToDxBrush(brush, RenderTarget), (float)num4, val3.StrokeStyle);
+					using (SharpDX.Direct2D1.Brush dxBrush = DxExtensions.ToDxBrush(brush, RenderTarget))
+							RenderTarget.DrawLine(val, val2, dxBrush, (float)num4, val3.StrokeStyle);
 				}
 			}
 		}

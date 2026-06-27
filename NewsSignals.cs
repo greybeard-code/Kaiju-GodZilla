@@ -776,6 +776,11 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
                 if (Debug)
                     Print ("Loading news from URL: " + urltweak);
 
+                // Some NT8 / .NET Framework hosts default to a TLS version the news host
+                // rejects, causing silent fetch failures. Pin TLS 1.2 (OR-in so we don't
+                // clobber any protocols the process already enabled).
+                try { System.Net.ServicePointManager.SecurityProtocol |= System.Net.SecurityProtocolType.Tls12; } catch { }
+
                 HttpWebRequest newsReq = (HttpWebRequest)HttpWebRequest.Create (urltweak);
                 newsReq.Timeout = 5000;
                 newsReq.ReadWriteTimeout = 5000;
@@ -1045,7 +1050,7 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
         // Developer
         // ─────────────────────────────────────────────────────────────
         [Display (Name = "Version", Order = 0, GroupName = "Developer")]
-        public string Version => "1.1";
+        public string Version => "1.1.1 Beta";
 
         [Display (Name = "Author", Order = 1, GroupName = "Developer")]
         public string Author => "Playr101";

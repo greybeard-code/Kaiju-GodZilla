@@ -433,7 +433,7 @@ public class gbThunderZilla : Indicator
 	public string Author  => "GreyBeard";
 
 	[Display(Name = "Version", Order = 1,  GroupName = "Developer")]
-	public string Version => "1.1";
+	public string Version => "1.1.1 Beta";
 
 	[Display(Name = "Website", Order = 5,  GroupName = "Developer")]
 	public string Website => "https://greybeardconsulting.net/";

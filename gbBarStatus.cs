@@ -214,7 +214,7 @@ public class gbBarStatus : Indicator
 	public string Website => "https://greybeardconsulting.net/";
 
 	[Display(Name = "Version", Order = 10, GroupName = "Developer")]
-	public string Version => "1.1";
+	public string Version => "1.1.1 Beta";
 
 	[Display(Name = "Count Mode", Order = 0, GroupName = "General")]
 	public gbBarStatus_CountMode CountMode { get; set; }
@@ -833,15 +833,21 @@ public class gbBarStatus : Indicator
 		Vector2 val2 = new Vector2((float)(xByBarIndex + BoundWidth), val.Y);
 		Vector2 val3 = new Vector2((float)xByBarIndex, (float)chartScale.GetYByValue(lowerBound));
 		Vector2 val4 = new Vector2((float)(xByBarIndex + BoundWidth), val3.Y);
-		RenderTarget.DrawLine(val, val2, DxExtensions.ToDxBrush(BoundUpper.Brush, RenderTarget), BoundUpper.Width, BoundUpper.StrokeStyle);
+		using (SharpDX.Direct2D1.Brush upperDx = DxExtensions.ToDxBrush(BoundUpper.Brush, RenderTarget))
+			RenderTarget.DrawLine(val, val2, upperDx, BoundUpper.Width, BoundUpper.StrokeStyle);
 		if (LabelEnabled)
 		{
-			PaintPriceMarker((int)val2.X, (int)val2.Y, isLeft: true, FormatPriceMarker(upperBound), LabelTextFont, DxExtensions.ToDxBrush(LabelTextBrush, RenderTarget), DxExtensions.ToDxBrush(BoundUpper.Brush, RenderTarget));
+			using (SharpDX.Direct2D1.Brush fgDx = DxExtensions.ToDxBrush(LabelTextBrush, RenderTarget))
+			using (SharpDX.Direct2D1.Brush bgDx = DxExtensions.ToDxBrush(BoundUpper.Brush, RenderTarget))
+				PaintPriceMarker((int)val2.X, (int)val2.Y, isLeft: true, FormatPriceMarker(upperBound), LabelTextFont, fgDx, bgDx);
 		}
-		RenderTarget.DrawLine(val3, val4, DxExtensions.ToDxBrush(BoundLower.Brush, RenderTarget), BoundLower.Width, BoundLower.StrokeStyle);
+		using (SharpDX.Direct2D1.Brush lowerDx = DxExtensions.ToDxBrush(BoundLower.Brush, RenderTarget))
+			RenderTarget.DrawLine(val3, val4, lowerDx, BoundLower.Width, BoundLower.StrokeStyle);
 		if (LabelEnabled)
 		{
-			PaintPriceMarker((int)val4.X, (int)val4.Y, isLeft: true, FormatPriceMarker(lowerBound), LabelTextFont, DxExtensions.ToDxBrush(LabelTextBrush, RenderTarget), DxExtensions.ToDxBrush(BoundLower.Brush, RenderTarget));
+			using (SharpDX.Direct2D1.Brush fgDx = DxExtensions.ToDxBrush(LabelTextBrush, RenderTarget))
+			using (SharpDX.Direct2D1.Brush bgDx = DxExtensions.ToDxBrush(BoundLower.Brush, RenderTarget))
+				PaintPriceMarker((int)val4.X, (int)val4.Y, isLeft: true, FormatPriceMarker(lowerBound), LabelTextFont, fgDx, bgDx);
 		}
 	}
 
@@ -851,8 +857,11 @@ public class gbBarStatus : Indicator
 		{
 			displayPercentage = ((CountMode != gbBarStatus_CountMode.CountUp) ? (100.0 - elapsedPercentage) : elapsedPercentage);
 			progressDisplayRect.Width = Math.Max(0f, Math.Min(eProgressBarWidth, Convert.ToInt32(displayPercentage * (double)eProgressBarWidth / 100.0)));
-			RenderTarget.FillRectangle(progressDisplayRect, DxExtensions.ToDxBrush(eBrush, RenderTarget));
-			RenderTarget.DrawRectangle(progressFullRect, DxExtensions.ToDxBrush(eBrush, RenderTarget), (float)ProgressBarBorder);
+			using (SharpDX.Direct2D1.Brush eDx = DxExtensions.ToDxBrush(eBrush, RenderTarget))
+			{
+				RenderTarget.FillRectangle(progressDisplayRect, eDx);
+				RenderTarget.DrawRectangle(progressFullRect, eDx, (float)ProgressBarBorder);
+			}
 		}
 	}
 
@@ -864,14 +873,16 @@ public class gbBarStatus : Indicator
 		Vector2 val2 = new Vector2();
 		val2.X = (float)symbolCenter.X + SymbolSize;
 		val2.Y = (float)symbolCenter.Y;
-		RenderTarget.DrawLine(val, val2, DxExtensions.ToDxBrush(eBrush, RenderTarget), (float)ProgressBarBorder);
+		using (SharpDX.Direct2D1.Brush eDx = DxExtensions.ToDxBrush(eBrush, RenderTarget))
+			RenderTarget.DrawLine(val, val2, eDx, (float)ProgressBarBorder);
 		if (CountMode == gbBarStatus_CountMode.CountUp)
 		{
 			val.X = (float)symbolCenter.X;
 			val.Y = (float)symbolCenter.Y - SymbolSize;
 			val2.X = (float)symbolCenter.X;
 			val2.Y = (float)symbolCenter.Y + SymbolSize;
-			RenderTarget.DrawLine(val, val2, DxExtensions.ToDxBrush(eBrush, RenderTarget), (float)ProgressBarBorder);
+			using (SharpDX.Direct2D1.Brush eDx = DxExtensions.ToDxBrush(eBrush, RenderTarget))
+				RenderTarget.DrawLine(val, val2, eDx, (float)ProgressBarBorder);
 		}
 	}
 
@@ -1182,7 +1193,9 @@ public class gbBarStatus : Indicator
 		}
 		float num3 = ((verticalAlignment > 0) ? y : ((verticalAlignment < 0) ? (y - height) : (y - height / 2f)));
 			RectangleF val3 = new RectangleF(num2, num3, num, height);
-		RenderTarget.DrawText(text, val, val3, DxExtensions.ToDxBrush(brush, RenderTarget));
+		using (SharpDX.Direct2D1.Brush dxBrush = DxExtensions.ToDxBrush(brush, RenderTarget))
+			RenderTarget.DrawText(text, val, val3, dxBrush);
+		val.Dispose();
 	}
 
 	private Size2F ComputeTextSize(string text, SimpleFont font)

@@ -68,7 +68,7 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 		}
 
 		#region Variables
-		private string _version = "1.4";
+		private string _version = "1.4.1 Beta";
 
 		private gbKingOrderBlock _king;
 		private gbPANAKanal      _pana;
@@ -90,6 +90,8 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 		private Dictionary<string, string> _lastAudioAlertStampByKey = new Dictionary<string, string> ();
 		private StreamWriter _logWriter;
 		private int          _lastLoggedBar = -1;
+		private bool         _logPendingOpen = false;
+		private string       _logSafeAccount = "NoAccount";
 
 		private int    _s1PendingDir   = 0;
 		private int    _s1PendingBars  = 0;
@@ -241,12 +243,16 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 
 			else if (State == State.DataLoaded)
 			{
-				_king=gbKingOrderBlock(King_SwingPointNeighborhood,King_ImbalanceQualifying,King_OrderBlockFindingBosChochPeriod,King_OrderBlockAge,King_OrderBlocksSameDirectionOffset,King_OrderBlocksDifferenceDirectionOffset,King_SignalTradeQuantityPerOrderBlock,King_SignalTradeSplitBars);
-				_pana=gbPANAKanal(Pana_Period,Pana_Factor,Pana_MiddlePeriod,Pana_SignalBreakSplit,Pana_SignalPullbackFindingPeriod);
-				_thunder=gbThunderZilla(Thunder_TrendMAType,Thunder_TrendPeriod,Thunder_TrendSmoothingEnabled,Thunder_TrendSmoothingMethod,Thunder_TrendSmoothingPeriod,Thunder_StopOffsetMultiplierStop,Thunder_SignalQuantityPerFlat,Thunder_SignalQuantityPerTrend);
-				_sjb=gbSuperJumpBoost(SJ_SensitiveModeEnabled,SJ_OffsetLevel1,SJ_OffsetLevel2,SJ_OffsetLevel3,SJ_OffsetLevel4,SJ_OffsetBase,SJ_ReferencePricePeriod,SJ_LineLevelsOffset,SJ_ExtremeNeighborhood,SJ_SignalCloseThreshold,SJ_SignalQuantityPerZone,SJ_SignalSplit);
-				_sumo=gbSumoPullback(SU_SlowMAType,SU_SlowMAPeriod,SU_SlowMASmoothingEnabled,SU_SlowMASmoothingMethod,SU_SlowMASmoothingPeriod,SU_FastMA1Type,SU_FastMA1Period,SU_FastMA1SmoothingEnabled,SU_FastMA1SmoothingMethod,SU_FastMA1SmoothingPeriod,SU_FastMA2Type,SU_FastMA2Period,SU_FastMA2SmoothingEnabled,SU_FastMA2SmoothingMethod,SU_FastMA2SmoothingPeriod,SU_FastMA3Type,SU_FastMA3Period,SU_FastMA3SmoothingEnabled,SU_FastMA3SmoothingMethod,SU_FastMA3SmoothingPeriod,SU_SignalSplitFirst,SU_SignalSplitSecond);
-				_nc=gbNobleCloud(NC_Sensitivity,NC_Smoothness,NC_BaselineMAType,NC_BaselinePeriod,NC_BaselineSmoothingEnabled,NC_BaselineSmoothingMethod,NC_BaselineSmoothingPeriod,NC_KernelMAType,NC_KernelPeriod,NC_KernelSmoothingEnabled,NC_KernelSmoothingMethod,NC_KernelSmoothingPeriod,NC_SignalSplit,NC_FilterEnabled,NC_FilterBarMin,NC_FilterBarMax);
+				// Only instantiate child indicators whose signal is enabled (in Set 1 or Set 2).
+				// Hosted indicators are calculated by NT8 every bar whether or not we read them,
+				// so skipping the unused ones avoids running heavy sub-indicators (ThunderZilla,
+				// SumoPullback, NobleCloud, etc.) for signals the user has turned off.
+				if (NeedKO) _king=gbKingOrderBlock(King_SwingPointNeighborhood,King_ImbalanceQualifying,King_OrderBlockFindingBosChochPeriod,King_OrderBlockAge,King_OrderBlocksSameDirectionOffset,King_OrderBlocksDifferenceDirectionOffset,King_SignalTradeQuantityPerOrderBlock,King_SignalTradeSplitBars);
+				if (NeedPA) _pana=gbPANAKanal(Pana_Period,Pana_Factor,Pana_MiddlePeriod,Pana_SignalBreakSplit,Pana_SignalPullbackFindingPeriod);
+				if (NeedTH) _thunder=gbThunderZilla(Thunder_TrendMAType,Thunder_TrendPeriod,Thunder_TrendSmoothingEnabled,Thunder_TrendSmoothingMethod,Thunder_TrendSmoothingPeriod,Thunder_StopOffsetMultiplierStop,Thunder_SignalQuantityPerFlat,Thunder_SignalQuantityPerTrend);
+				if (NeedSJ) _sjb=gbSuperJumpBoost(SJ_SensitiveModeEnabled,SJ_OffsetLevel1,SJ_OffsetLevel2,SJ_OffsetLevel3,SJ_OffsetLevel4,SJ_OffsetBase,SJ_ReferencePricePeriod,SJ_LineLevelsOffset,SJ_ExtremeNeighborhood,SJ_SignalCloseThreshold,SJ_SignalQuantityPerZone,SJ_SignalSplit);
+				if (NeedSU) _sumo=gbSumoPullback(SU_SlowMAType,SU_SlowMAPeriod,SU_SlowMASmoothingEnabled,SU_SlowMASmoothingMethod,SU_SlowMASmoothingPeriod,SU_FastMA1Type,SU_FastMA1Period,SU_FastMA1SmoothingEnabled,SU_FastMA1SmoothingMethod,SU_FastMA1SmoothingPeriod,SU_FastMA2Type,SU_FastMA2Period,SU_FastMA2SmoothingEnabled,SU_FastMA2SmoothingMethod,SU_FastMA2SmoothingPeriod,SU_FastMA3Type,SU_FastMA3Period,SU_FastMA3SmoothingEnabled,SU_FastMA3SmoothingMethod,SU_FastMA3SmoothingPeriod,SU_SignalSplitFirst,SU_SignalSplitSecond);
+				if (NeedNC) _nc=gbNobleCloud(NC_Sensitivity,NC_Smoothness,NC_BaselineMAType,NC_BaselinePeriod,NC_BaselineSmoothingEnabled,NC_BaselineSmoothingMethod,NC_BaselineSmoothingPeriod,NC_KernelMAType,NC_KernelPeriod,NC_KernelSmoothingEnabled,NC_KernelSmoothingMethod,NC_KernelSmoothingPeriod,NC_SignalSplit,NC_FilterEnabled,NC_FilterBarMin,NC_FilterBarMax);
 				_koSignalSeries=new Series<double>(this); _paSignalSeries=new Series<double>(this);
 				_thSignalSeries=new Series<double>(this); _sjSignalSeries=new Series<double>(this);
 				_suSignalSeries=new Series<double>(this); _ncSignalSeries=new Series<double>(this);
@@ -266,11 +272,10 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 							acctName = ct.Account.Name;
 					}
 					catch {}
-					string safeAcct = string.Concat(acctName.Split(System.IO.Path.GetInvalidFileNameChars())).Replace(" ","_");
-					string lp=System.IO.Path.Combine(NinjaTrader.Core.Globals.UserDataDir,"GodZuki_"+safeAcct+"_"+DateTime.Now.ToString("yyyyMMdd_HHmmss")+".csv");
-					_logWriter=new StreamWriter(lp,append:false,encoding:Encoding.UTF8);
-					_logWriter.WriteLine("DateTime,Instrument,Set1,Set2,EMA,KO,PA,TH,SJ,SU,NC"); _logWriter.Flush();
-					if (EnableDebug) Print(string.Format("[{0}] CSV log opened | Acct={1} | {2}", Name, acctName, lp));
+					_logSafeAccount = string.Concat(acctName.Split(System.IO.Path.GetInvalidFileNameChars())).Replace(" ","_");
+					// Open lazily on the first logged bar so the filename uses Time[0] (the bar's
+					// session date) rather than wall-clock — correct in Market Replay/Playback.
+					_logPendingOpen = true;
 				}
 				if (EnableDebug)
 				{
@@ -293,6 +298,7 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 			else if (State==State.Terminated)
 			{
 				try { if (_logWriter!=null) { _logWriter.Flush(); _logWriter.Dispose(); _logWriter=null; } } catch {}
+				_logPendingOpen = false;
 				try { DisposeSharpDxResources(); } catch {}
 			}
 		}
@@ -301,24 +307,28 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 		{
 			if (CurrentBar < BarsRequiredToPlot) return;
 
-			if (_king == null || _pana == null || _thunder == null || _sjb == null || _sumo == null || _nc == null)
+			// Only a *needed* (enabled-anywhere) indicator being null is a failure — disabled
+			// signals are intentionally not instantiated and read as 0.
+			bool missingNeeded = (NeedKO && _king == null) || (NeedPA && _pana == null) || (NeedTH && _thunder == null)
+							  || (NeedSJ && _sjb == null) || (NeedSU && _sumo == null) || (NeedNC && _nc == null);
+			if (missingNeeded)
 			{
 				if (!_indicatorNullWarned && State == State.Realtime)
 				{
 					_indicatorNullWarned = true;
-					Print ($"[{Name}] INDICATOR NULL | One or more child indicators failed to load. KO={_king != null} PA={_pana != null} TH={_thunder != null} SJ={_sjb != null} SU={_sumo != null} NC={_nc != null}");
+					Print ($"[{Name}] INDICATOR NULL | One or more enabled child indicators failed to load. KO={_king != null} PA={_pana != null} TH={_thunder != null} SJ={_sjb != null} SU={_sumo != null} NC={_nc != null}");
 				}
 				return;
 			}
 
 			try
 			{
-				double koRaw = SafeSignalRead (() => _king.Signal_Trade[0], "KO");
-				double paRaw = SafeSignalRead (() => _pana.Signal_Trade[0], "PA");
-				double thRaw = SafeSignalRead (() => _thunder.Signal_Trade[0], "TH");
-				double sjRaw = SafeSignalRead (() => _sjb.Signal_Trade[0], "SJ");
-				double suRaw = SafeSignalRead (() => _sumo.Signal_Trade[0], "SU");
-				double ncRaw = SafeSignalRead (() => _nc.Signal_Trade[0], "NC");
+				double koRaw = SafeSignalRead (_king?.Signal_Trade, "KO");
+				double paRaw = SafeSignalRead (_pana?.Signal_Trade, "PA");
+				double thRaw = SafeSignalRead (_thunder?.Signal_Trade, "TH");
+				double sjRaw = SafeSignalRead (_sjb?.Signal_Trade, "SJ");
+				double suRaw = SafeSignalRead (_sumo?.Signal_Trade, "SU");
+				double ncRaw = SafeSignalRead (_nc?.Signal_Trade, "NC");
 				int ko=ComputeSignal(UseKOSignals,koRaw,KO_LongOperator,KO_LongValue,KO_ShortOperator,KO_ShortValue);
 				int pa=ComputeSignal(UsePASignals,paRaw,PA_LongOperator,PA_LongValue,PA_ShortOperator,PA_ShortValue);
 				int th=ComputeSignal(UseTHSignals,thRaw,TH_LongOperator,TH_LongValue,TH_ShortOperator,TH_ShortValue);
@@ -480,7 +490,7 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 				Values[17][0] = EnableGroupTriggerSet2 ? ComputeSignal(G2_UseNCSignals,ncRaw,G2_NC_LongOperator,G2_NC_LongValue,G2_NC_ShortOperator,G2_NC_ShortValue) : 0;
 
 				// CSV — one row per bar when any signal is non-zero
-				if (LogEnabled&&_logWriter!=null&&CurrentBar!=_lastLoggedBar
+				if (LogEnabled&&CurrentBar!=_lastLoggedBar
 					&&(ko!=0||pa!=0||th!=0||sj!=0||su!=0||nc!=0||s1Out!=0||s2Out!=0))
 					WriteSignalLogRow(s1Out,s2Out,emaOut,ko,pa,th,sj,su,nc);
 
@@ -521,6 +531,14 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 		private double SafeSignalRead(Func<double> getter, string src)
 		{
 			try { return getter!=null?getter():0.0; }
+			catch (Exception ex) { if (EnableDebug) Print(string.Format("[{0}] SafeSignalRead ERROR src={1} | {2}",Name,src,ex.Message)); return 0.0; }
+		}
+
+		// Series overload — avoids allocating a Func<double> closure per read, and returns
+		// 0.0 for a disabled (null) child indicator. Reads index [0] inside the guard.
+		private double SafeSignalRead(ISeries<double> series, string src)
+		{
+			try { return series!=null?series[0]:0.0; }
 			catch (Exception ex) { if (EnableDebug) Print(string.Format("[{0}] SafeSignalRead ERROR src={1} | {2}",Name,src,ex.Message)); return 0.0; }
 		}
 
@@ -581,6 +599,15 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 		private bool IsSecondaryGroupModeActive() { if(!EnableGroupTriggerSet2)return false; int n=CountEnabledGroupTriggerSet2Signals(); return n>=1&&GroupTriggerSet2RequiredCount>=1&&GroupTriggerSet2RequiredCount<=n; }
 		private int  CountEnabledSignals()        { int c=0; if(UseKOSignals)c++; if(UsePASignals)c++; if(UseTHSignals)c++; if(UseSJSignals)c++; if(UseSUSignals)c++; if(UseNCSignals)c++; return c; }
 		private int  CountEnabledGroupTriggerSet2Signals() { int c=0; if(G2_UseKOSignals)c++; if(G2_UsePASignals)c++; if(G2_UseTHSignals)c++; if(G2_UseSJSignals)c++; if(G2_UseSUSignals)c++; if(G2_UseNCSignals)c++; return c; }
+
+		// "Enabled anywhere" — a child indicator is needed if its signal is used in Set 1 or
+		// (when Set 2 is on) in Set 2. Drives both instantiation and the OnBarUpdate null-guard.
+		private bool NeedKO => UseKOSignals || (EnableGroupTriggerSet2 && G2_UseKOSignals);
+		private bool NeedPA => UsePASignals || (EnableGroupTriggerSet2 && G2_UsePASignals);
+		private bool NeedTH => UseTHSignals || (EnableGroupTriggerSet2 && G2_UseTHSignals);
+		private bool NeedSJ => UseSJSignals || (EnableGroupTriggerSet2 && G2_UseSJSignals);
+		private bool NeedSU => UseSUSignals || (EnableGroupTriggerSet2 && G2_UseSUSignals);
+		private bool NeedNC => UseNCSignals || (EnableGroupTriggerSet2 && G2_UseNCSignals);
 
 		private string BuildSignalFiredList(GroupTriggerResult r)
 		{
@@ -664,8 +691,30 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 		// ── CSV logging ───────────────────────────────────────────────────────────
 		// One row per bar, written when any signal is non-zero.
 		// Columns: DateTime, Instrument, Set1, Set2, EMA, KO, PA, TH, SJ, SU, NC
+		private void EnsureLogOpen()
+		{
+			if (!_logPendingOpen || !LogEnabled || CurrentBar < 0) return;
+			try
+			{
+				string lp = System.IO.Path.Combine(NinjaTrader.Core.Globals.UserDataDir,
+					"GodZuki_"+_logSafeAccount+"_"+Time[0].ToString("yyyyMMdd_HHmmss")+".csv");
+				_logWriter = new StreamWriter(lp, append:false, encoding:Encoding.UTF8);
+				_logWriter.WriteLine("DateTime,Instrument,Set1,Set2,EMA,KO,PA,TH,SJ,SU,NC");
+				_logWriter.Flush();
+				_logPendingOpen = false;
+				if (EnableDebug) Print(string.Format("[{0}] CSV log opened | Acct={1} | {2}", Name, _logSafeAccount, lp));
+			}
+			catch (Exception ex)
+			{
+				_logPendingOpen = false;
+				if (EnableDebug) Print(string.Format("[{0}] CSV log open failed | {1}", Name, ex.Message));
+			}
+		}
+
 		private void WriteSignalLogRow(int s1,int s2,int ema,int ko,int pa,int th,int sj,int su,int nc)
 		{
+			EnsureLogOpen();
+			if (_logWriter==null) return;
 			try
 			{
 				_lastLoggedBar=CurrentBar;
@@ -796,7 +845,7 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 				RenderTarget.FillRectangle(box,_bBackground);
 				RenderTarget.DrawRectangle(box,_bBorder,1f);
 				float x=bx+PAD,y=by+PAD,w=BW-PAD*2f;
-				DrawHudLine("GodZuki  v"+ver,x,y,w,TH,_bTextCyan,_dashTitleFormat); y+=TH;
+				DrawHudLine((string.IsNullOrEmpty(title)?"GodZuki":title)+"  v"+ver,x,y,w,TH,_bTextCyan,_dashTitleFormat); y+=TH;
 				RenderTarget.DrawLine(new Vector2(x,y+1f),new Vector2(x+w,y+1f),_bBorder,1f); y+=SEP_H;
 				// EMA row — green=bullish, red=bearish, dim=off
 				SharpDX.Direct2D1.SolidColorBrush emaBrush = emaEn ? (emaBull ? _bTextGreen : _bTextRed) : _bTextDim;

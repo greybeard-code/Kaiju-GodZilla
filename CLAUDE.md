@@ -200,7 +200,7 @@ Two modes with separate accounting paths:
 ## Key Gotchas
 
 - **`SimpleFont` size:** Pass size in the constructor only — `new SimpleFont("Agency Fb", 20) { Bold = true }`. Setting both the constructor arg and `{ Size = N }` causes the property to override the constructor silently.
-- **`IsExitOnSessionCloseStrategy = false`** — positions carry overnight. NT8's built-in session-close flatten is disabled.
+- **`IsExitOnSessionCloseStrategy = true`** (with `ExitOnSessionCloseSeconds = 30`) — NT8's built-in session-close auto-exit is kept ON as a backstop. The strategy's own TF/daily-limit `FlattenEverything` paths normally flatten earlier; this ensures no position is carried overnight if one of those gates is missed (strategy disabled mid-day, TF3 EndTime set away from session close, etc.).
 - **`RealtimeErrorHandling = StopCancelClose`** — order rejections surface to `OnOrderUpdate` instead of being swallowed. The `OnOrderUpdate` override handles FixedTicks entry and protective order rejections.
 - **Enums at class level vs namespace level:** GodZillaKilla defines its enums inside the class (they are not shared). GodZuki defines `GodZukiSignalOperator`, `GodZukiHudCorner`, `GodZukiHudSize` at namespace level to avoid resolution conflicts with NT8's cross-file compilation.
 - **`Account.Positions` is not a thread-safe collection** — always `lock (Account.Positions)` before iterating it from any path that can be called off the data thread (e.g., `OnOrderUpdate`).

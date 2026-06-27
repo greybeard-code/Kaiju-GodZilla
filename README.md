@@ -9,7 +9,7 @@ A NinjaTrader 8 trading system built around six specialized signal indicators un
 ## Components
 
 ### GodZillaKilla — ATM Trading Strategy
-*Current version: 1.9*
+*Current version: 1.9.1 Beta*
 
 Automated NinjaTrader 8 strategy that reads signals from all six GodZilla Suite sub-indicators and executes ATM or Fixed-Ticks trades based on configurable confluence rules. Includes session filters, EMA filter, news filter, daily PnL limits, martingale recovery, a full SharpDX dashboard, and a floating "noble" dark navy control panel with drag, scale, and minimize support.
 
@@ -27,7 +27,7 @@ Standalone Windows executable that turns GodZilla trade logs into browser-based 
 ---
 
 ### GodZuki — Signal Indicator
-*Current version: 1.2.1*
+*Current version: 1.4.1 Beta*
 
 Pure signal indicator version of GodZillaKilla. No trading — add GodZuki to any chart to visualize the same confluence signals, trigger audio alerts, log signal history to CSV, and expose all signal values in the NT8 Data Box. Signal Set 1 and Set 2 draw independently on the same bar. Per-indicator **Require** flags (Set 1 and Set 2) enforce that a named indicator must be among the signals that actually fired before a group trigger is counted. Useful for monitoring, backtesting signal quality, and driving custom strategies via public `Series<double>` outputs.
 
@@ -36,7 +36,7 @@ Pure signal indicator version of GodZillaKilla. No trading — add GodZuki to an
 ---
 
 ### GodZilla Indicators — Signal Engine
-*Six sub-indicators powering both GodZillaKilla and GodZuki*
+*Six sub-indicators powering both GodZillaKilla and GodZuki — current version: 1.1.1 Beta*
 
 | Indicator | Short Name | What it detects |
 |---|---|---|

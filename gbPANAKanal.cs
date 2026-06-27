@@ -377,7 +377,7 @@ public class gbPANAKanal : Indicator
 	public string Author  => "GreyBeard";
 
 	[Display(Name = "Version",  Order = 1,  GroupName = "Developer")]
-	public string Version => "1.1";
+	public string Version => "1.1.1 Beta";
 
 	[Display(Name = "Website", Order = 5, GroupName = "Developer")]
 	public string Website => "https://greybeardconsulting.net/";
@@ -1415,7 +1415,8 @@ public class gbPANAKanal : Indicator
 			Vector2 val2 = new Vector2(num, num3);
 			Vector2 val3 = new Vector2(num2, num3);
 			RenderTarget.AntialiasMode = (SharpDX.Direct2D1.AntialiasMode)0;
-			RenderTarget.DrawLine(val2, val3, DxExtensions.ToDxBrush(brush, RenderTarget), width, strokeStyle);
+			using (SharpDX.Direct2D1.Brush dxBrush = DxExtensions.ToDxBrush(brush, RenderTarget))
+				RenderTarget.DrawLine(val2, val3, dxBrush, width, strokeStyle);
 		}
 	}
 

@@ -754,7 +754,7 @@ public class gbKingOrderBlock : Indicator
 	public string Website => "https://greybeardconsulting.net/";
 
 	[Display(Name = "Version",   Order = 10,  GroupName = "Developer")]
-	public string Version => "1.1";
+	public string Version => "1.1.1 Beta";
 
 	[Display(Name = "Screen DPI", Order = 100, GroupName = "General")]
 	[Range(99, 500)]
@@ -2587,16 +2587,16 @@ public class gbKingOrderBlock : Indicator
 		}
 		else
 		{
-			SharpDX.Direct2D1.Brush brush2 = brush.ToDxBrush(base.RenderTarget);
-			base.RenderTarget.FillRectangle(rect, brush2);
+			using (SharpDX.Direct2D1.Brush brush2 = brush.ToDxBrush(base.RenderTarget))
+				base.RenderTarget.FillRectangle(rect, brush2);
 		}
 		Stroke stroke = (isActive ? ((!isImbalance) ? (isTop ? OrderBlockActiveBorderTop : OrderBlockActiveBorderBottom) : (isTop ? ImbalanceActiveBorderTop : ImbalanceActiveBorderBottom)) : ((!isImbalance) ? (isTop ? OrderBlockInactiveBorderTop : OrderBlockInactiveBorderBottom) : (isTop ? ImbalanceInactiveBorderTop : ImbalanceInactiveBorderBottom)));
 		if (!stroke.Brush.IsTransparent())
 		{
-			SharpDX.Direct2D1.Brush brush3 = stroke.Brush.ToDxBrush(base.RenderTarget);
 			StrokeStyle strokeStyle = stroke.StrokeStyle;
 			float width = stroke.Width;
-			base.RenderTarget.DrawRectangle(rect, brush3, width, strokeStyle);
+			using (SharpDX.Direct2D1.Brush brush3 = stroke.Brush.ToDxBrush(base.RenderTarget))
+				base.RenderTarget.DrawRectangle(rect, brush3, width, strokeStyle);
 		}
 	}
 
@@ -2661,7 +2661,8 @@ public class gbKingOrderBlock : Indicator
 		Vector2 point2 = new Vector2(num2, y);
 		AntialiasMode antialiasMode = base.RenderTarget.AntialiasMode;
 		base.RenderTarget.AntialiasMode = AntialiasMode.PerPrimitive;
-		base.RenderTarget.DrawLine(point, point2, brush.ToDxBrush(base.RenderTarget), width, strokeStyle);
+		using (SharpDX.Direct2D1.Brush lineDxBrush = brush.ToDxBrush(base.RenderTarget))
+			base.RenderTarget.DrawLine(point, point2, lineDxBrush, width, strokeStyle);
 		base.RenderTarget.AntialiasMode = antialiasMode;
 		if (isTop)
 		{
@@ -2728,8 +2729,10 @@ public class gbKingOrderBlock : Indicator
 					SharpDX.Direct2D1.Ellipse ellipse2 = new SharpDX.Direct2D1.Ellipse(center, num, num);
 					AntialiasMode antialiasMode = base.RenderTarget.AntialiasMode;
 					base.RenderTarget.AntialiasMode = AntialiasMode.PerPrimitive;
-					base.RenderTarget.DrawEllipse(ellipse, Brushes.Silver.ToDxBrush(base.RenderTarget));
-					base.RenderTarget.FillEllipse(ellipse2, brushSwingPoint.ToDxBrush(base.RenderTarget));
+					using (SharpDX.Direct2D1.Brush outlineDxBrush = Brushes.Silver.ToDxBrush(base.RenderTarget))
+						base.RenderTarget.DrawEllipse(ellipse, outlineDxBrush);
+					using (SharpDX.Direct2D1.Brush fillDxBrush = brushSwingPoint.ToDxBrush(base.RenderTarget))
+						base.RenderTarget.FillEllipse(ellipse2, fillDxBrush);
 					base.RenderTarget.AntialiasMode = antialiasMode;
 				}
 			}

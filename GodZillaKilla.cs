@@ -473,7 +473,6 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         private Border              _pillBtn;       // pill minimize button container
         private System.Windows.Shapes.Path _pillPath; // pill SVG outline
         private StackPanel          _panelBody;     // body section (collapsed when Minimized)
-        private volatile bool _strategyEnabled = true;
         private bool _hudIsMasterActive;
 
         // ATMPlotMarkers integration — ATM mode only
@@ -511,7 +510,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 Description = "GodZillaKilla — strategy using direct KingOrderBlock/PANAKanal/ThunderZilla/SuperJumpBoost/SumoPullback/NobleCloud child indicator signals.";
                 Name = "GodZillaKilla";
                 StrategyName = Name;
-                _strategyVersion = "1.9";
+                _strategyVersion = "1.9.1";
 
                 Author = "Playr101";
                 Credits = "GreyBeard, ninZa.co, RenkoKings, ES, rbro999";
@@ -887,6 +886,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             {
                 ClearOutputWindow ();
                 AddDataSeries (BarsPeriodType.Tick, 1);
+                _isPlaybackConnectionCached = null;   // re-detect playback per (re)load
             }
             else if (State == State.DataLoaded)
             {
@@ -1138,7 +1138,6 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 _confirmPendingBars  = 0;
                 _confirmPendingClose = 0;
 
-                _strategyEnabled = true;
                 _armLong = true;
                 _armShort = true;
                 _autoArm = true;
@@ -1352,7 +1351,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
             // MASTER GATE: Honor the on-chart button AND the Auto-Arm toggle
             // Also clears pending signals so they don't fire when you turn Auto-Arm back on
-            if (!_strategyEnabled || !_autoArm)
+            if (!_autoArm)
             {
                 ClearPendingSignalEntry ();
                 ClearPendingReverse ();
@@ -1384,12 +1383,12 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 return;
 
             // 8. Indicator Signal Processing
-            double koRaw = SafeSignalRead (() => _king.Signal_Trade[0], "KO");
-            double paRaw = SafeSignalRead (() => _pana.Signal_Trade[0], "PA");
-            double thRaw = SafeSignalRead (() => _thunder.Signal_Trade[0], "TH");
-            double sjRaw = SafeSignalRead (() => _sjb.Signal_Trade[0], "SJ");
-            double suRaw = SafeSignalRead (() => _sumo.Signal_Trade[0], "SU");
-            double ncRaw  = SafeSignalRead(() => _nc.Signal_Trade[0],  "NC");
+            double koRaw = SafeSignalRead (_king.Signal_Trade, "KO");
+            double paRaw = SafeSignalRead (_pana.Signal_Trade, "PA");
+            double thRaw = SafeSignalRead (_thunder.Signal_Trade, "TH");
+            double sjRaw = SafeSignalRead (_sjb.Signal_Trade, "SJ");
+            double suRaw = SafeSignalRead (_sumo.Signal_Trade, "SU");
+            double ncRaw  = SafeSignalRead (_nc.Signal_Trade,  "NC");
 
             int ko = ComputeSignal(UseKOSignals, koRaw, KO_LongOperator, KO_LongValue, KO_ShortOperator, KO_ShortValue);
             int pa = ComputeSignal(UsePASignals, paRaw, PA_LongOperator, PA_LongValue, PA_ShortOperator, PA_ShortValue);
@@ -1772,23 +1771,48 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             return true;
         }
 
+        // Reflection handle resolved once per process — the Connection type never
+        // changes, so there's no reason to call GetProperty on every tick.
+        private static System.Reflection.PropertyInfo _playbackConnProp;
+        private static bool _playbackConnPropResolved;
+
+        // Memoized playback-vs-live result. Playback status is fixed for the lifetime
+        // of a connected session, so once it can be read definitively we cache it and
+        // the per-tick News Filter path stops doing any reflection. Reset in
+        // State.Configure so a re-enable on a different connection re-detects.
+        private bool? _isPlaybackConnectionCached;
+
         private bool IsPlaybackConnectionActive ()
+        {
+            if (_isPlaybackConnectionCached.HasValue)
+                return _isPlaybackConnectionCached.Value;
+
+            bool result = DetectPlaybackConnection ();
+
+            // Only cache once the answer is stable: a positive detection (playback
+            // never reverts to live mid-session) or a connected account in Realtime.
+            // Before that, keep re-detecting so an early "false" during DataLoaded
+            // doesn't get pinned before the playback connection is established.
+            if (result || (State == State.Realtime && Account != null && Account.Connection != null))
+                _isPlaybackConnectionCached = result;
+
+            return result;
+        }
+
+        private bool DetectPlaybackConnection ()
         {
             try
             {
-                Type connectionType = typeof (NinjaTrader.Cbi.Connection);
-
-                System.Reflection.PropertyInfo playbackProp = connectionType.GetProperty (
-            "PlaybackConnection",
-            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-
-                if (playbackProp != null)
+                if (!_playbackConnPropResolved)
                 {
-                    object playbackConnection = playbackProp.GetValue (null, null);
-
-                    if (playbackConnection != null)
-                        return true;
+                    _playbackConnProp = typeof (NinjaTrader.Cbi.Connection).GetProperty (
+                        "PlaybackConnection",
+                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                    _playbackConnPropResolved = true;
                 }
+
+                if (_playbackConnProp != null && _playbackConnProp.GetValue (null, null) != null)
+                    return true;
 
                 if (Account != null && Account.Connection != null && Account.Connection.Options != null)
                 {
@@ -2194,6 +2218,12 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             DateTime tickTime = Times[1][0];
             DateTime nowUtc = DateTime.UtcNow;
 
+            // The ATM market position is constant within a single tick, but the
+            // staleness backstop and the close-detection poll both query it on the
+            // same id. Reset the per-tick memo here so those collapse to one NT8 ATM
+            // lookup per tick (and one less stale-id level-3 log) during open trades.
+            ResetTickAtmPositionCache ();
+
             // Defense #3 + #8 — stale-ATM-ID backstop runs FIRST so that any phantom
             // IDs are cleared (or any mid-trade-stale ATM is recovered via Account-level
             // flatten) before the rest of the tick handler touches them. Cheap: two
@@ -2244,7 +2274,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 if (_openAtmTrade == null && !string.IsNullOrEmpty (pollAtmId))
                 {
                     Cbi.MarketPosition atmPos = Cbi.MarketPosition.Flat;
-                    try { atmPos = GetAtmStrategyMarketPosition (pollAtmId); } catch { }
+                    try { atmPos = GetAtmStrategyMarketPositionTickCached (pollAtmId); } catch { }
 
                     if (EnableDebug && _atmIdsSetUtc != DateTime.MinValue && (nowUtc - _atmIdsSetUtc).TotalSeconds <= 5)
                         Print ($"[{Name}] DIAG:POLL | {tickTime:yyyy-MM-dd HH:mm:ss} | atmId={pollAtmId} | atmPos={atmPos} | isAtmCreated={isAtmStrategyCreated} | age={(nowUtc-_atmIdsSetUtc).TotalSeconds:F1}s");
@@ -2297,7 +2327,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 if (_openAtmTrade != null)
                 {
                     Cbi.MarketPosition curPos = Cbi.MarketPosition.Flat;
-                    try { curPos = GetAtmStrategyMarketPosition (_openAtmTrade.AtmId); } catch { }
+                    try { curPos = GetAtmStrategyMarketPositionTickCached (_openAtmTrade.AtmId); } catch { }
                     bool posFlat = curPos == Cbi.MarketPosition.Flat;
 
                     if (posFlat)
@@ -2511,7 +2541,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     : "24H (filter off)";
 
                 // 2. Determine Master Active State
-                _hudIsMasterActive = _strategyEnabled && _autoArm && !dailyLimitHit && inSession;
+                _hudIsMasterActive = _autoArm && !dailyLimitHit && inSession;
 
                 _hudTitle = Name ?? "GodZilla";
                 _hudVersion = StrategyVersion ?? "";
@@ -3345,12 +3375,12 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         {
             try
             {
-                double koRaw = _king != null ? SafeSignalRead (() => _king.Signal_Trade[0], "KO") : 0.0;
-                double paRaw = _pana != null ? SafeSignalRead (() => _pana.Signal_Trade[0], "PA") : 0.0;
-                double thRaw = _thunder != null ? SafeSignalRead (() => _thunder.Signal_Trade[0], "TH") : 0.0;
-                double sjRaw = _sjb != null ? SafeSignalRead (() => _sjb.Signal_Trade[0], "SJ") : 0.0;
-                double suRaw = _sumo != null ? SafeSignalRead (() => _sumo.Signal_Trade[0], "SU") : 0.0;
-                double ncRaw = _nc != null ? SafeSignalRead (() => _nc.Signal_Trade[0], "NC") : 0.0;
+                double koRaw = SafeSignalRead (_king?.Signal_Trade, "KO");
+                double paRaw = SafeSignalRead (_pana?.Signal_Trade, "PA");
+                double thRaw = SafeSignalRead (_thunder?.Signal_Trade, "TH");
+                double sjRaw = SafeSignalRead (_sjb?.Signal_Trade, "SJ");
+                double suRaw = SafeSignalRead (_sumo?.Signal_Trade, "SU");
+                double ncRaw = SafeSignalRead (_nc?.Signal_Trade, "NC");
 
                 int ko = ComputeSignal (UseKOSignals, koRaw, KO_LongOperator, KO_LongValue, KO_ShortOperator, KO_ShortValue);
                 int pa = ComputeSignal (UsePASignals, paRaw, PA_LongOperator, PA_LongValue, PA_ShortOperator, PA_ShortValue);
@@ -3371,22 +3401,6 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     _suSignalSeries[0] = su;
                 if (_ncSignalSeries != null)
                     _ncSignalSeries[0] = nc;
-
-                // Data Box plots — computed here with pre-visual-filter signal directions
-                {
-                    GroupTriggerResult pg = EvaluatePrimaryGroupTriggerSet (
-                        ko == 1 && UseKOSignals,  pa == 1 && UsePASignals,  th == 1 && UseTHSignals,
-                        sj == 1 && UseSJSignals,  su == 1 && UseSUSignals,  nc == 1 && UseNCSignals,
-                        ko == -1 && UseKOSignals, pa == -1 && UsePASignals, th == -1 && UseTHSignals,
-                        sj == -1 && UseSJSignals, su == -1 && UseSUSignals, nc == -1 && UseNCSignals);
-                    GroupTriggerResult sg = EnableGroupTriggerSet2
-                        ? EvaluateSecondaryGroupTriggerSet (koRaw, paRaw, thRaw, sjRaw, suRaw, ncRaw)
-                        : null;
-
-                    int s1 = pg != null ? (pg.Long ? 1 : pg.Short ? -1 : 0) : 0;
-                    int s2 = sg != null ? (sg.Long ? 1 : sg.Short ? -1 : 0) : 0;
-
-                }
 
                 if (!SignalVisualFilterPassed (ko))
                     ko = 0;
@@ -3461,6 +3475,25 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             try
             {
                 return getter != null ? getter () : 0.0;
+            }
+            catch (Exception ex)
+            {
+                if (EnableDebug)
+                    Print ($"{Time[0]} | SafeSignalRead ERROR | Source={sourceName} | Bar={CurrentBar} | Error={ex.Message}");
+
+                return 0.0;
+            }
+        }
+
+        // Series overload — avoids allocating a Func<double> closure per read. The
+        // signal path reads six series twice per primary bar; the lambda form created
+        // ~12 short-lived delegates per bar. Reads index [0] inside the guard so a
+        // not-yet-warmed series can't throw out of the hot path.
+        private double SafeSignalRead (ISeries<double> series, string sourceName)
+        {
+            try
+            {
+                return series != null ? series[0] : 0.0;
             }
             catch (Exception ex)
             {
@@ -4753,12 +4786,6 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             int tickTime = ToTime (Times[1][0]);
 
             if (!CheckTradingTimeframes (tickTime))
-            {
-                ClearPendingSignalEntry ();
-                return;
-            }
-
-            if (!_strategyEnabled)
             {
                 ClearPendingSignalEntry ();
                 return;
@@ -6086,7 +6113,9 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         {
             string closedAtmId        = _openAtmTrade.AtmId;
             martingaleLastRealizedPnL = pnl;
-            totalRealizedPnL         += pnl;
+            totalRealizedPnL          = Math.Round (totalRealizedPnL + pnl, 2);
+            dailyRealizedPnL          = Math.Round (totalRealizedPnL - sessionStartTotalRealizedPnL, 2);
+            totalRunningPnL           = Math.Round (totalRealizedPnL + (UseUnrealizedPnl ? dailyUnrealizedPnL : 0.0), 2);
             UpdateLastTradeClosedSummary (pnl);
             WriteTradeLogRecord (closedAtmId, closeTime, pnl);
             Print ($"[{Name}] MARTINGALE CLOSED | PnL={pnl:F2} | Recovery complete. Normal entries resumed.");
@@ -6305,6 +6334,34 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             // This method is kept as a placeholder in case future tick-rate checks are needed.
         }
 
+        // Per-tick memo for GetAtmStrategyMarketPosition. The ATM position cannot
+        // change within a single tick, but EvictStaleAtmIdsIfTimedOut (via
+        // IsAtmMidTradeStale) and the close-detection poll both query the same id.
+        // Caching collapses those two NT8 ATM lookups into one per tick. Used only on
+        // the tick-series call paths; reset at the top of every tick handler.
+        private string _tickAtmPosCacheId;
+        private Cbi.MarketPosition _tickAtmPosCacheValue;
+
+        private void ResetTickAtmPositionCache ()
+        {
+            _tickAtmPosCacheId = null;
+        }
+
+        private Cbi.MarketPosition GetAtmStrategyMarketPositionTickCached (string strategyId)
+        {
+            if (!string.IsNullOrEmpty (strategyId) && strategyId == _tickAtmPosCacheId)
+                return _tickAtmPosCacheValue;
+
+            // If GetAtmStrategyMarketPosition throws, let it propagate to the caller's
+            // existing try/catch (same as before) and leave the memo unset so the next
+            // query re-attempts rather than caching a bogus value.
+            Cbi.MarketPosition pos = GetAtmStrategyMarketPosition (strategyId);
+
+            _tickAtmPosCacheId = strategyId;
+            _tickAtmPosCacheValue = pos;
+            return pos;
+        }
+
         private void EvictStaleAtmIdsIfTimedOut ()
         {
             DateTime nowUtc = DateTime.UtcNow;
@@ -6342,7 +6399,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
                     // Salvage trade log BEFORE clearing state.
                     string d8SavedId    = atmStrategyId;
-                    double d8ForcedPnl  = Instrument.MasterInstrument.RoundToTickSize (dailyUnrealizedPnL);
+                    double d8ForcedPnl  = Math.Round (dailyUnrealizedPnL, 2);
                     if (EnableDebug)
                         Print ($"[{Name}] DEFENSE #8 FORCED-CLOSE LOG | ATM={d8SavedId} | EstPnL={d8ForcedPnl:F2}");
                     WriteTradeLogRecord (d8SavedId, nowUtc, d8ForcedPnl);
@@ -6403,7 +6460,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
                     // Salvage trade log BEFORE clearing state.
                     string d8MartSavedId   = martingaleAtmStrategyId;
-                    double d8MartForcedPnl = Instrument.MasterInstrument.RoundToTickSize (dailyUnrealizedPnL);
+                    double d8MartForcedPnl = Math.Round (dailyUnrealizedPnL, 2);
                     if (EnableDebug)
                         Print ($"[{Name}] DEFENSE #8 MARTINGALE FORCED-CLOSE LOG | ATM={d8MartSavedId} | EstPnL={d8MartForcedPnl:F2}");
                     WriteTradeLogRecord (d8MartSavedId, nowUtc, d8MartForcedPnl);
@@ -6428,7 +6485,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
             try
             {
-                MarketPosition atmPos = GetAtmStrategyMarketPosition (strategyId);
+                MarketPosition atmPos = GetAtmStrategyMarketPositionTickCached (strategyId);
                 if (atmPos != MarketPosition.Flat)
                     return false;   // ATM still tracking → not stale
 
@@ -6990,6 +7047,30 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
             if (!ShowEntryExitMarkers)
                 return;
+
+            // Bound the retained marker pool. Completed markers older than
+            // DRAW_TAG_KEEP bars have a bars-ago index that exceeds
+            // MaximumBarsLookBack — Draw.Line / High[barsAgo] can no longer
+            // resolve them, so redrawing burns CPU for nothing and the list
+            // would otherwise grow unbounded over a multi-hour session.
+            // Evict them and release their WPF draw objects, mirroring the
+            // DrawSignalArrow rolling-cleanup pattern (defense #4).
+            int markerCutoffBar = CurrentBar - DRAW_TAG_KEEP;
+            if (markerCutoffBar >= 0 && _markerList.Count > 0)
+            {
+                for (int i = _markerList.Count - 1; i >= 0; i--)
+                {
+                    MarkerEntryExitData stale = _markerList[i];
+
+                    if (stale != null && stale.IsComplete && stale.ExitBar >= 0 && stale.ExitBar < markerCutoffBar)
+                    {
+                        try { RemoveDrawObject (stale.LineTag); } catch { }
+                        try { RemoveDrawObject (stale.EntryLabelTag); } catch { }
+                        try { RemoveDrawObject (stale.ExitLabelTag); } catch { }
+                        _markerList.RemoveAt (i);
+                    }
+                }
+            }
 
             for (int i = 0; i < _markerList.Count; i++)
             {
@@ -7569,7 +7650,10 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
             UpdateRBroButtons ();
             UpdateRBroStatusUI ();
-            BuildDashboardSnapshot (); // Refresh HUD immediately
+            // Do NOT call BuildDashboardSnapshot() here — this runs on the WPF UI thread
+            // and that method reads bar series (Time[0]), Position, and the plain
+            // confluenceStatsByKey dictionary, all owned by the data thread. The next
+            // data tick rebuilds the HUD snapshot and picks up the new arm state.
         }
 
         private void CloseBtn_Click (object sender, RoutedEventArgs e)
