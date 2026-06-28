@@ -284,11 +284,8 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             public int Qty;
             public string AtmStrategyName;
 
-            // New tracking/logging fields
-            public string SignalCombo;
-            public string UsedSignals;
+            // Trade result (WIN/LOSS/FLAT) written to the CSV log.
             public string TradeResult;
-            public string LastTradeLine;
         }
 
         // Signal tracking
@@ -510,7 +507,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 Description = "GodZillaKilla — strategy using direct KingOrderBlock/PANAKanal/ThunderZilla/SuperJumpBoost/SumoPullback/NobleCloud child indicator signals.";
                 Name = "GodZillaKilla";
                 StrategyName = Name;
-                _strategyVersion = "1.9.1";
+                _strategyVersion = "1.9.2 Beta";
 
                 Author = "Playr101";
                 Credits = "GreyBeard, ninZa.co, RenkoKings, ES, rbro999";
@@ -4549,7 +4546,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     "GodZilla_" + _logSafeAccount + "_" + stamp + ".csv");
 
                 _logWriter = new StreamWriter (logPath, append: false, encoding: Encoding.UTF8);
-                _logWriter.WriteLine ("OpenTime,Account,Instrument,OpenPrice,Qty,CloseTime,Trigger,Direction,AtmStrategyName,RealizedPnL,SignalCombo,UsedSignals,TradeResult,LastTradeLine");
+                _logWriter.WriteLine ("OpenTime,Account,Instrument,OpenPrice,Qty,CloseTime,Trigger,Direction,AtmStrategyName,RealizedPnL,TradeResult");
                 _logWriter.Flush ();
                 _logPendingOpen = false;
 
@@ -4583,19 +4580,11 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         ? Account.Name
         : "NoAccount";
 
-            string signalCombo = BuildActiveConfluenceStatsKey ();
-
-            if (string.IsNullOrEmpty (signalCombo))
-                signalCombo = BuildActiveSignalAbbreviationList ();
-
-            string usedSignals = BuildActiveSignalAbbreviationList ();
+            // SignalCombo/UsedSignals/LastTradeLine were dropped from the log — they
+            // duplicated the Trigger column. Trigger already carries the signal combo
+            // (e.g. SET1-G3:KO+PA+SU), so only TradeResult is derived here.
             string result = GetTradeResultText (tradePnl);
-            string lastLine = BuildTrackedLastTradeLine (tradePnl);
-
-            tr.SignalCombo = signalCombo;
-            tr.UsedSignals = usedSignals;
             tr.TradeResult = result;
-            tr.LastTradeLine = lastLine;
 
             _logWriter.WriteLine (
                 $"{tr.OpenTime:yyyy-MM-dd HH:mm:ss},"
@@ -4608,10 +4597,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 + $"{CsvSafe (tr.Direction)},"
                 + $"{CsvSafe (tr.AtmStrategyName)},"
                 + $"{tradePnl:F2},"
-                + $"{CsvSafe (signalCombo)},"
-                + $"{CsvSafe (usedSignals)},"
-                + $"{CsvSafe (result)},"
-                + $"{CsvSafe (lastLine)}");
+                + $"{CsvSafe (result)}");
 
             _logWriter.Flush ();
         }
