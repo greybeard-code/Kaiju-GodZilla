@@ -364,33 +364,40 @@ public class gbKingOrderBlock : Indicator
 
 		public void BackupOrRevertProperties(bool isBackup, Dictionary<Type, PropertyInfo[]> cachePropertyInfo)
 		{
-			if (!cachePropertyInfo.TryGetValue(GetType(), out var value))
+			// Cached as interleaved [backup, source] pairs so the per-call work is
+			// only the Get/SetValue copies. The original resolved the attribute and
+			// the "Backup"-stripped source property by reflection on every call for
+			// every property of every zone/swing element.
+			if (!cachePropertyInfo.TryGetValue(GetType(), out PropertyInfo[] pairs))
 			{
-				value = GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public);
-				cachePropertyInfo[GetType()] = value;
-			}
-			else
-			{
-				value = cachePropertyInfo[GetType()];
-			}
-			PropertyInfo[] array = value;
-			foreach (PropertyInfo propertyInfo in array)
-			{
-				if (!Attribute.IsDefined(propertyInfo, typeof(BackupPropertiesAttribute)))
+				List<PropertyInfo> pairList = new List<PropertyInfo>();
+				foreach (PropertyInfo propertyInfo in GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public))
 				{
-					continue;
+					if (!Attribute.IsDefined(propertyInfo, typeof(BackupPropertiesAttribute)))
+					{
+						continue;
+					}
+					PropertyInfo property = GetType().GetProperty(propertyInfo.Name.Replace("Backup", ""));
+					if (property != null)
+					{
+						pairList.Add(propertyInfo);
+						pairList.Add(property);
+					}
 				}
-				PropertyInfo property = GetType().GetProperty(propertyInfo.Name.Replace("Backup", ""));
-				if (property != null)
+				pairs = pairList.ToArray();
+				cachePropertyInfo[GetType()] = pairs;
+			}
+			for (int i = 0; i < pairs.Length; i += 2)
+			{
+				PropertyInfo backupProperty = pairs[i];
+				PropertyInfo sourceProperty = pairs[i + 1];
+				if (isBackup)
 				{
-					if (isBackup)
-					{
-						propertyInfo.SetValue(this, property.GetValue(this));
-					}
-					else
-					{
-						property.SetValue(this, propertyInfo.GetValue(this));
-					}
+					backupProperty.SetValue(this, sourceProperty.GetValue(this));
+				}
+				else
+				{
+					sourceProperty.SetValue(this, backupProperty.GetValue(this));
 				}
 			}
 		}
@@ -507,6 +514,21 @@ public class gbKingOrderBlock : Indicator
 	private Dictionary<int, ImbalanceInfo> dictImbalanceInfosBroken;
 
 	private Dictionary<Type, PropertyInfo[]> cachePropertyInfo = new Dictionary<Type, PropertyInfo[]>();
+
+	// SharpDX resource caches (UI thread only). DrawOneBox / DrawOneBosChochLine /
+	// DrawOneSwingPoint / DrawTextDX previously created and disposed a device
+	// brush per element per frame. Cached per source WPF brush / gradient-stop
+	// array, invalidated when the RenderTarget changes (see OnRender gate and
+	// OnRenderTargetChanged), disposed in State.Terminated.
+	private Dictionary<System.Windows.Media.Brush, SharpDX.Direct2D1.Brush> dxBrushCache = new Dictionary<System.Windows.Media.Brush, SharpDX.Direct2D1.Brush>();
+
+	private Dictionary<SharpDX.Direct2D1.GradientStop[], SharpDX.Direct2D1.GradientStopCollection> dxGradientStopCache = new Dictionary<SharpDX.Direct2D1.GradientStop[], SharpDX.Direct2D1.GradientStopCollection>();
+
+	private Dictionary<SharpDX.Direct2D1.GradientStop[], SharpDX.Direct2D1.LinearGradientBrush> dxGradientBrushCache = new Dictionary<SharpDX.Direct2D1.GradientStop[], SharpDX.Direct2D1.LinearGradientBrush>();
+
+	private Dictionary<SimpleFont, SharpDX.DirectWrite.TextFormat> dxTextFormatCache = new Dictionary<SimpleFont, SharpDX.DirectWrite.TextFormat>();
+
+	private SharpDX.Direct2D1.RenderTarget dxCacheRenderTarget;
 
 	private Window alertWindow;
 	private bool alertWindowClosed;
@@ -1494,6 +1516,8 @@ public class gbKingOrderBlock : Indicator
 					rearmTimer.Tick -= OnRearmTimerTick;
 					rearmTimer = null;
 				}
+				DisposeDxResourceCaches();
+				DisposeTextFormatCache();
 			}
 		}
 		catch (Exception exception)
@@ -1553,6 +1577,10 @@ public class gbKingOrderBlock : Indicator
 				FindBrokenImbalance();
 				num = FindBrokenOrderBlockAndSignal();
 				FindOrderBlockAndAddToList();
+				if (base.IsFirstTickOfBar)
+				{
+					PruneInactiveZoneLists();
+				}
 				ComputeSignalState();
 				Signal_Trade[0] = num;
 				Signal_State[0] = signalState;
@@ -1643,8 +1671,10 @@ public class gbKingOrderBlock : Indicator
 
 	public void FindLastValues()
 	{
-		lastSwingPointTop = ((listSwingsTop.Count > 0) ? listSwingsTop.Last().Value : null);
-		lastSwingPointBottom = ((listSwingsBottom.Count > 0) ? listSwingsBottom.Last().Value : null);
+		// Indexed access — SortedList exposes no IList fast path for Enumerable.Last(),
+		// so .Last() walked the entire list on every first tick of bar.
+		lastSwingPointTop = ((listSwingsTop.Count > 0) ? listSwingsTop.Values[listSwingsTop.Count - 1] : null);
+		lastSwingPointBottom = ((listSwingsBottom.Count > 0) ? listSwingsBottom.Values[listSwingsBottom.Count - 1] : null);
 		if (flagNewSwingPoint)
 		{
 			KeyValuePair<int, SwingPoint>? lastElement = GetLastElement(listSwingsTop, listSwingsBottom);
@@ -1671,21 +1701,27 @@ public class gbKingOrderBlock : Indicator
 		return false;
 	}
 
-	public void ChangePropertiesListActive<TValue>(SortedList<int, TValue> listActive, bool isBackup)
+	public void ChangePropertiesListActive<TValue>(SortedList<int, TValue> listActive, bool isBackup) where TValue : BackupExtension
 	{
 		if (listActive.Count == 0)
 		{
 			return;
 		}
-		string name = (isBackup ? "BackupProperties" : "RevertProperties");
-		MethodInfo method = typeof(TValue).GetMethod(name);
-		if (method == null)
+		// Direct calls via the BackupExtension base — the previous implementation
+		// resolved BackupProperties/RevertProperties through reflection and boxed
+		// the cache dictionary into a new object[] for every element on every
+		// first tick of bar.
+		for (int i = 0; i < listActive.Count; i++)
 		{
-			return;
-		}
-		foreach (KeyValuePair<int, TValue> item in listActive)
-		{
-			method.Invoke(item.Value, new object[1] { cachePropertyInfo });
+			BackupExtension element = listActive.Values[i];
+			if (isBackup)
+			{
+				element.BackupProperties(cachePropertyInfo);
+			}
+			else
+			{
+				element.RevertProperties(cachePropertyInfo);
+			}
 		}
 	}
 
@@ -1817,8 +1853,9 @@ public class gbKingOrderBlock : Indicator
 
 	private KeyValuePair<int, TValue>? GetLastElement<TValue>(SortedList<int, TValue> list1, SortedList<int, TValue> list2)
 	{
-		KeyValuePair<int, TValue>? result = ((list1.Count > 0) ? new KeyValuePair<int, TValue>?(list1.Last()) : ((KeyValuePair<int, TValue>?)null));
-		KeyValuePair<int, TValue>? result2 = ((list2.Count > 0) ? new KeyValuePair<int, TValue>?(list2.Last()) : ((KeyValuePair<int, TValue>?)null));
+		// Indexed access instead of Enumerable.Last() — see FindLastValues.
+		KeyValuePair<int, TValue>? result = ((list1.Count > 0) ? new KeyValuePair<int, TValue>?(new KeyValuePair<int, TValue>(list1.Keys[list1.Count - 1], list1.Values[list1.Count - 1])) : ((KeyValuePair<int, TValue>?)null));
+		KeyValuePair<int, TValue>? result2 = ((list2.Count > 0) ? new KeyValuePair<int, TValue>?(new KeyValuePair<int, TValue>(list2.Keys[list2.Count - 1], list2.Values[list2.Count - 1])) : ((KeyValuePair<int, TValue>?)null));
 		if (!result.HasValue && !result2.HasValue)
 		{
 			return null;
@@ -2482,6 +2519,13 @@ public class gbKingOrderBlock : Indicator
 		{
 			if (isCharting && SwitchedOn && !base.IsInHitTest)
 			{
+				// Device brushes are tied to the RenderTarget — rebuild the caches
+				// lazily when NT8 hands us a new target (resize / device loss).
+				if (!object.ReferenceEquals(base.RenderTarget, dxCacheRenderTarget))
+				{
+					DisposeDxResourceCaches();
+					dxCacheRenderTarget = base.RenderTarget;
+				}
 				base.OnRender(chartControl, chartScale);
 				fromIndex = base.ChartBars.FromIndex;
 				toIndex = base.ChartBars.ToIndex;
@@ -2500,6 +2544,21 @@ public class gbKingOrderBlock : Indicator
 		{
 			Print(exception.ToString());
 		}
+	}
+
+	public override void OnRenderTargetChanged()
+	{
+		// Called on device loss and chart resize — release device resources here;
+		// they are lazily recreated on the next OnRender (see the cache gate there).
+		try
+		{
+			DisposeDxResourceCaches();
+		}
+		catch (Exception exception)
+		{
+			Print(exception.ToString());
+		}
+		base.OnRenderTargetChanged();
 	}
 
 	private void DrawImbalances(ChartScale chartScale, SortedList<int, ImbalanceInfo> listImbalance, bool isActive)
@@ -2574,29 +2633,22 @@ public class gbKingOrderBlock : Indicator
 		RectangleF rect = new RectangleF(num, yByValue, num3, num4);
 		if (GradientEnabled)
 		{
-			SharpDX.Direct2D1.GradientStopCollection gradientStopCollection = new SharpDX.Direct2D1.GradientStopCollection(base.RenderTarget, array);
-			LinearGradientBrushProperties linearGradientBrushProperties = new LinearGradientBrushProperties
-			{
-				StartPoint = rect.TopLeft,
-				EndPoint = rect.BottomLeft
-			};
-			SharpDX.Direct2D1.LinearGradientBrush linearGradientBrush = new SharpDX.Direct2D1.LinearGradientBrush(base.RenderTarget, linearGradientBrushProperties, gradientStopCollection);
+			// Cached gradient brush — only the start/end anchors change per zone.
+			SharpDX.Direct2D1.LinearGradientBrush linearGradientBrush = GetDxGradientBrushCached(array);
+			linearGradientBrush.StartPoint = rect.TopLeft;
+			linearGradientBrush.EndPoint = rect.BottomLeft;
 			base.RenderTarget.FillRectangle(rect, linearGradientBrush);
-			linearGradientBrush.Dispose();
-			gradientStopCollection.Dispose();
 		}
 		else
 		{
-			using (SharpDX.Direct2D1.Brush brush2 = brush.ToDxBrush(base.RenderTarget))
-				base.RenderTarget.FillRectangle(rect, brush2);
+			base.RenderTarget.FillRectangle(rect, GetDxBrushCached(brush));
 		}
 		Stroke stroke = (isActive ? ((!isImbalance) ? (isTop ? OrderBlockActiveBorderTop : OrderBlockActiveBorderBottom) : (isTop ? ImbalanceActiveBorderTop : ImbalanceActiveBorderBottom)) : ((!isImbalance) ? (isTop ? OrderBlockInactiveBorderTop : OrderBlockInactiveBorderBottom) : (isTop ? ImbalanceInactiveBorderTop : ImbalanceInactiveBorderBottom)));
 		if (!stroke.Brush.IsTransparent())
 		{
 			StrokeStyle strokeStyle = stroke.StrokeStyle;
 			float width = stroke.Width;
-			using (SharpDX.Direct2D1.Brush brush3 = stroke.Brush.ToDxBrush(base.RenderTarget))
-				base.RenderTarget.DrawRectangle(rect, brush3, width, strokeStyle);
+			base.RenderTarget.DrawRectangle(rect, GetDxBrushCached(stroke.Brush), width, strokeStyle);
 		}
 	}
 
@@ -2661,8 +2713,7 @@ public class gbKingOrderBlock : Indicator
 		Vector2 point2 = new Vector2(num2, y);
 		AntialiasMode antialiasMode = base.RenderTarget.AntialiasMode;
 		base.RenderTarget.AntialiasMode = AntialiasMode.PerPrimitive;
-		using (SharpDX.Direct2D1.Brush lineDxBrush = brush.ToDxBrush(base.RenderTarget))
-			base.RenderTarget.DrawLine(point, point2, lineDxBrush, width, strokeStyle);
+		base.RenderTarget.DrawLine(point, point2, GetDxBrushCached(brush), width, strokeStyle);
 		base.RenderTarget.AntialiasMode = antialiasMode;
 		if (isTop)
 		{
@@ -2729,10 +2780,8 @@ public class gbKingOrderBlock : Indicator
 					SharpDX.Direct2D1.Ellipse ellipse2 = new SharpDX.Direct2D1.Ellipse(center, num, num);
 					AntialiasMode antialiasMode = base.RenderTarget.AntialiasMode;
 					base.RenderTarget.AntialiasMode = AntialiasMode.PerPrimitive;
-					using (SharpDX.Direct2D1.Brush outlineDxBrush = Brushes.Silver.ToDxBrush(base.RenderTarget))
-						base.RenderTarget.DrawEllipse(ellipse, outlineDxBrush);
-					using (SharpDX.Direct2D1.Brush fillDxBrush = brushSwingPoint.ToDxBrush(base.RenderTarget))
-						base.RenderTarget.FillEllipse(ellipse2, fillDxBrush);
+					base.RenderTarget.DrawEllipse(ellipse, GetDxBrushCached(Brushes.Silver));
+					base.RenderTarget.FillEllipse(ellipse2, GetDxBrushCached(brushSwingPoint));
 					base.RenderTarget.AntialiasMode = antialiasMode;
 				}
 			}
@@ -2848,6 +2897,31 @@ public class gbKingOrderBlock : Indicator
 	public override string FormatPriceMarker(double price)
 	{
 		return base.Instrument.MasterInstrument.FormatPrice(base.Instrument.MasterInstrument.RoundToTickSize(price));
+	}
+
+	// Inactive zones are display-only history: the signal logic never reads them
+	// again, but both lists previously grew unbounded over a session while
+	// OnRender enumerated them fully every frame. Zones leave the active lists
+	// no later than OrderBlockAge bars after their key bar, so entries keyed more
+	// than 2×OrderBlockAge bars back have been off the right edge for at least a
+	// full OrderBlockAge window — evict them. Scrolling back further than that
+	// no longer shows the evicted zones (accepted trade-off; raise OrderBlockAge
+	// to keep more history).
+	private void PruneInactiveZoneLists()
+	{
+		int cutoffKey = base.CurrentBar - 2 * OrderBlockAge;
+		if (cutoffKey <= 0)
+		{
+			return;
+		}
+		while (listOrderBlockInactive.Count > 0 && listOrderBlockInactive.Keys[0] < cutoffKey)
+		{
+			listOrderBlockInactive.RemoveAt(0);
+		}
+		while (listImbalanceInactive.Count > 0 && listImbalanceInactive.Keys[0] < cutoffKey)
+		{
+			listImbalanceInactive.RemoveAt(0);
+		}
 	}
 
 	private void MoveElementFromListToList<TValue>(int key, TValue element, SortedList<int, TValue> listActive, SortedList<int, TValue> listInactive)
@@ -3011,24 +3085,84 @@ public class gbKingOrderBlock : Indicator
 		return result;
 	}
 
+	private SharpDX.Direct2D1.Brush GetDxBrushCached(System.Windows.Media.Brush brush)
+	{
+		if (!dxBrushCache.TryGetValue(brush, out SharpDX.Direct2D1.Brush dxBrush))
+		{
+			dxBrush = brush.ToDxBrush(base.RenderTarget);
+			dxBrushCache[brush] = dxBrush;
+		}
+		return dxBrush;
+	}
+
+	private SharpDX.Direct2D1.LinearGradientBrush GetDxGradientBrushCached(SharpDX.Direct2D1.GradientStop[] gradientStops)
+	{
+		if (!dxGradientBrushCache.TryGetValue(gradientStops, out SharpDX.Direct2D1.LinearGradientBrush gradientBrush))
+		{
+			SharpDX.Direct2D1.GradientStopCollection stopCollection = new SharpDX.Direct2D1.GradientStopCollection(base.RenderTarget, gradientStops);
+			gradientBrush = new SharpDX.Direct2D1.LinearGradientBrush(base.RenderTarget, new LinearGradientBrushProperties
+			{
+				StartPoint = new Vector2(0f, 0f),
+				EndPoint = new Vector2(0f, 1f)
+			}, stopCollection);
+			dxGradientStopCache[gradientStops] = stopCollection;
+			dxGradientBrushCache[gradientStops] = gradientBrush;
+		}
+		return gradientBrush;
+	}
+
+	private SharpDX.DirectWrite.TextFormat GetTextFormatCached(SimpleFont font)
+	{
+		if (!dxTextFormatCache.TryGetValue(font, out SharpDX.DirectWrite.TextFormat textFormat))
+		{
+			textFormat = font.ToDirectWriteTextFormat();
+			textFormat.TextAlignment = SharpDX.DirectWrite.TextAlignment.Center;
+			textFormat.ParagraphAlignment = SharpDX.DirectWrite.ParagraphAlignment.Near;
+			dxTextFormatCache[font] = textFormat;
+		}
+		return textFormat;
+	}
+
+	private void DisposeDxResourceCaches()
+	{
+		foreach (SharpDX.Direct2D1.Brush cachedBrush in dxBrushCache.Values)
+		{
+			try { cachedBrush.Dispose(); } catch { }
+		}
+		dxBrushCache.Clear();
+		foreach (SharpDX.Direct2D1.LinearGradientBrush cachedGradientBrush in dxGradientBrushCache.Values)
+		{
+			try { cachedGradientBrush.Dispose(); } catch { }
+		}
+		dxGradientBrushCache.Clear();
+		foreach (SharpDX.Direct2D1.GradientStopCollection cachedStops in dxGradientStopCache.Values)
+		{
+			try { cachedStops.Dispose(); } catch { }
+		}
+		dxGradientStopCache.Clear();
+		dxCacheRenderTarget = null;
+	}
+
+	private void DisposeTextFormatCache()
+	{
+		foreach (SharpDX.DirectWrite.TextFormat cachedFormat in dxTextFormatCache.Values)
+		{
+			try { cachedFormat.Dispose(); } catch { }
+		}
+		dxTextFormatCache.Clear();
+	}
+
 	private void DrawTextDX(string text, SimpleFont font, float x, float y, int xAlign, int ySign, System.Windows.Media.Brush brush, int screenDPI, SharpDX.Direct2D1.RenderTarget rt)
 	{
 		if (string.IsNullOrEmpty(text) || brush.IsTransparent())
 			return;
-		using (var textFormat = font.ToDirectWriteTextFormat())
+		SharpDX.DirectWrite.TextFormat textFormat = GetTextFormatCached(font);
+		using (var textLayout = new SharpDX.DirectWrite.TextLayout(NinjaTrader.Core.Globals.DirectWriteFactory, text, textFormat, 400, 400))
 		{
-			textFormat.TextAlignment = SharpDX.DirectWrite.TextAlignment.Center;
-			textFormat.ParagraphAlignment = SharpDX.DirectWrite.ParagraphAlignment.Near;
-			using (var textLayout = new SharpDX.DirectWrite.TextLayout(NinjaTrader.Core.Globals.DirectWriteFactory, text, textFormat, 400, 400))
-			{
-				float textHeight = textLayout.Metrics.Height;
-				float drawX = x - 200;
-				float drawY = (ySign < 0) ? y - textHeight : y;
-				using (var dxBrush = brush.ToDxBrush(rt))
-				{
-					rt.DrawTextLayout(new SharpDX.Vector2(drawX, drawY), textLayout, dxBrush);
-				}
-			}
+			float textHeight = textLayout.Metrics.Height;
+			float drawX = x - 200;
+			float drawY = (ySign < 0) ? y - textHeight : y;
+			rt.DrawTextLayout(new SharpDX.Vector2(drawX, drawY), textLayout, GetDxBrushCached(brush));
 		}
 	}
 

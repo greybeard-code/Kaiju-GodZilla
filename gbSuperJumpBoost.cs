@@ -840,6 +840,7 @@ public class gbSuperJumpBoost : Indicator
 							rearmTimer.Tick -= OnRearmTimerTick;
 							rearmTimer = null;
 						}
+						DisposeDxBrushCache();
 					}
 					else
 					{
@@ -1703,10 +1704,45 @@ public class gbSuperJumpBoost : Indicator
 		listActive[key] = TData;
 	}
 
+	// Device-brush cache. All brushes drawn here are reference-stable fields or
+	// Stroke/marker property references, so the cache stays bounded. Invalidated
+	// when the RenderTarget changes, disposed in State.Terminated.
+	private readonly Dictionary<Brush, SharpDX.Direct2D1.Brush> dxBrushCache = new Dictionary<Brush, SharpDX.Direct2D1.Brush>();
+
+	private SharpDX.Direct2D1.RenderTarget dxCacheRenderTarget;
+
+	private SharpDX.Direct2D1.Brush GetDxBrushCached(Brush brush)
+	{
+		SharpDX.Direct2D1.Brush dxBrush;
+		if (!dxBrushCache.TryGetValue(brush, out dxBrush))
+		{
+			dxBrush = DxExtensions.ToDxBrush(brush, RenderTarget);
+			dxBrushCache[brush] = dxBrush;
+		}
+		return dxBrush;
+	}
+
+	private void DisposeDxBrushCache()
+	{
+		foreach (SharpDX.Direct2D1.Brush cachedBrush in dxBrushCache.Values)
+		{
+			try { cachedBrush.Dispose(); } catch { }
+		}
+		dxBrushCache.Clear();
+		dxCacheRenderTarget = null;
+	}
+
 	protected override void OnRender(ChartControl chartControl, ChartScale chartScale)
 	{
 		if (isCharting && SwitchedOn && !IsInHitTest)
 		{
+			// Device brushes are tied to the RenderTarget — rebuild the cache
+			// lazily when NT8 hands us a new target (resize / device loss).
+			if (!object.ReferenceEquals(RenderTarget, dxCacheRenderTarget))
+			{
+				DisposeDxBrushCache();
+				dxCacheRenderTarget = RenderTarget;
+			}
 			base.OnRender(chartControl, chartScale);
 				fromIndex = ChartBars.FromIndex;
 				toIndex = ChartBars.ToIndex;
@@ -1756,16 +1792,14 @@ public class gbSuperJumpBoost : Indicator
 			double valueAt = ((!flag) ? Low : High).GetValueAt(barIndex);
 			int num4 = chartScale.GetYByValue(valueAt) - num * 10;
 			RectangleF val = new RectangleF(num3, (float)num4, num2, (float)(-num) * 2.1474836E+09f);
-			using (SharpDX.Direct2D1.Brush dxBrush = DxExtensions.ToDxBrush(brush, RenderTarget))
-				RenderTarget.FillRectangle(val, dxBrush);
+			RenderTarget.FillRectangle(val, GetDxBrushCached(brush));
 			Brush brush2 = ((!flag) ? brushBarHighlightCoreLineBearish : brushBarHighlightCoreLineBullish);
 			if (!BrushExtensions.IsTransparent(brush2))
 			{
 				float num5 = ((HighlightWidthPercent != 100) ? Math.Max(1f, (float)(barPaintWidth * HighlightWidthPercent) / 100f) : ((float)barPaintWidth));
 				float num6 = (float)ChartControl.GetXByBarIndex(ChartBars, barIndex) - num5 / 2f;
 				RectangleF val2 = new RectangleF(num6, (float)num4, num5, (float)(-num) * 2.1474836E+09f);
-				using (SharpDX.Direct2D1.Brush dxBrush2 = DxExtensions.ToDxBrush(brush2, RenderTarget))
-					RenderTarget.FillRectangle(val2, dxBrush2);
+				RenderTarget.FillRectangle(val2, GetDxBrushCached(brush2));
 			}
 		}
 	}
@@ -1888,8 +1922,7 @@ public class gbSuperJumpBoost : Indicator
 			Vector2 val2 = new Vector2(num2, num3);
 			AntialiasMode antialiasMode = RenderTarget.AntialiasMode;
 			RenderTarget.AntialiasMode = (AntialiasMode)0;
-			using (SharpDX.Direct2D1.Brush dxBrush = DxExtensions.ToDxBrush(brush, RenderTarget))
-				RenderTarget.DrawLine(val, val2, dxBrush, lineWidth, strokeStyle);
+			RenderTarget.DrawLine(val, val2, GetDxBrushCached(brush), lineWidth, strokeStyle);
 			RenderTarget.AntialiasMode = antialiasMode;
 		}
 	}
@@ -2017,8 +2050,7 @@ public class gbSuperJumpBoost : Indicator
 					val2 = new Vector2(num3, num);
 					Brush brush = (isNaked ? ((!isMaximum) ? brushNakedLevelMinimum : brushNakedLevelMaximum) : ((!isMaximum) ? brushTestedLevelMinimum : brushTestedLevelMaximum));
 					Stroke val3 = (isNaked ? ((!isMaximum) ? ExtremeIntactLevelBottom : ExtremeIntactLevelTop) : ((!isMaximum) ? ExtremeBrokenLevelBottom : ExtremeBrokenLevelTop));
-					using (SharpDX.Direct2D1.Brush dxBrush = DxExtensions.ToDxBrush(brush, RenderTarget))
-							RenderTarget.DrawLine(val, val2, dxBrush, (float)num4, val3.StrokeStyle);
+					RenderTarget.DrawLine(val, val2, GetDxBrushCached(brush), (float)num4, val3.StrokeStyle);
 				}
 			}
 		}
@@ -2275,18 +2307,15 @@ public class gbSuperJumpBoost : Indicator
 	private void DrawTextOnChart(string text, SimpleFont font, float x, float y, int xOffset, int direction, Brush wpfBrush, int dpi, SharpDX.Direct2D1.RenderTarget rt)
 	{
 		if (rt == null || string.IsNullOrEmpty(text)) return;
-		using (var dxBrush = wpfBrush.ToDxBrush(rt))
+		using (var format = font.ToDirectWriteTextFormat())
 		{
-			using (var format = font.ToDirectWriteTextFormat())
+			format.TextAlignment = SharpDX.DirectWrite.TextAlignment.Center;
+			using (var layout = new SharpDX.DirectWrite.TextLayout(NinjaTrader.Core.Globals.DirectWriteFactory, text, format, 200f, 200f))
 			{
-				format.TextAlignment = SharpDX.DirectWrite.TextAlignment.Center;
-				using (var layout = new SharpDX.DirectWrite.TextLayout(NinjaTrader.Core.Globals.DirectWriteFactory, text, format, 200f, 200f))
-				{
-					float textH = layout.Metrics.Height;
-					float drawX = x - 100f + xOffset;
-					float drawY = (direction < 0) ? y - textH : y;
-					rt.DrawTextLayout(new SharpDX.Vector2(drawX, drawY), layout, dxBrush);
-				}
+				float textH = layout.Metrics.Height;
+				float drawX = x - 100f + xOffset;
+				float drawY = (direction < 0) ? y - textH : y;
+				rt.DrawTextLayout(new SharpDX.Vector2(drawX, drawY), layout, GetDxBrushCached(wpfBrush));
 			}
 		}
 	}

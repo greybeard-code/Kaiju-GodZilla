@@ -240,6 +240,7 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
             else if (State == State.Terminated)
             {
                 DisposeTextFormats ();
+                DisposeDxBrushCache ();
             }
         }
 
@@ -304,10 +305,12 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
             if (lineAlertFont == null)
                 lineAlertFont = new SimpleFont ("Arial", 10) { Bold = true, Italic = true };
 
-            // Recreate cached TextFormats when the render target changes (device loss / resize)
+            // Recreate cached TextFormats and device brushes when the render target
+            // changes (device loss / resize)
             if (!object.ReferenceEquals (RenderTarget, _lastSeenRenderTarget))
             {
                 DisposeTextFormats ();
+                DisposeDxBrushCache ();
                 _lastSeenRenderTarget = RenderTarget;
             }
 
@@ -332,47 +335,64 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
 
                 RenderTarget.AntialiasMode = SharpDX.Direct2D1.AntialiasMode.Aliased;
 
-                widestTimeCol = 0;
-                widestImpactCol = 0;
-                widestDescCol = 0;
-                totalHeight = 0;
-                longestLine = 0;
-
                 float renderWidth = Math.Max (1, ChartPanel.W);
                 float renderHeight = Math.Max (1, ChartPanel.H);
 
                 if (snapshot == null || snapshot.Count == 0)
                     return;
 
-                foreach (TextLine line in snapshot)
+                // Column widths change only when BuildList publishes a new list
+                // instance (at most once a minute) or the panel width changes
+                // (affects wrapping). The old path built three TextLayouts per
+                // line on every render frame just to recompute identical widths.
+                if (!object.ReferenceEquals (snapshot, _measuredList) || renderWidth != _measuredRenderWidth)
                 {
-                    if (line == null)
-                        continue;
+                    widestTimeCol = 0;
+                    widestImpactCol = 0;
+                    widestDescCol = 0;
 
-                    TextFormat measureFormat = line.font == lineAlertFont ? formatLineAlertFont : formatDefaultFont;
-
-                    using (TextLayout timeLayout = new TextLayout (NinjaTrader.Core.Globals.DirectWriteFactory, SafeText (line.timeColumn), measureFormat, renderWidth, Math.Max (1, line.font.TextFormatHeight)))
+                    foreach (TextLine line in snapshot)
                     {
-                        if (timeLayout.Metrics.Width > widestTimeCol)
-                            widestTimeCol = timeLayout.Metrics.Width;
+                        if (line == null)
+                            continue;
+
+                        TextFormat measureFormat = line.font == lineAlertFont ? formatLineAlertFont : formatDefaultFont;
+
+                        using (TextLayout timeLayout = new TextLayout (NinjaTrader.Core.Globals.DirectWriteFactory, SafeText (line.timeColumn), measureFormat, renderWidth, Math.Max (1, line.font.TextFormatHeight)))
+                        {
+                            if (timeLayout.Metrics.Width > widestTimeCol)
+                                widestTimeCol = timeLayout.Metrics.Width;
+                        }
+
+                        using (TextLayout impactLayout = new TextLayout (NinjaTrader.Core.Globals.DirectWriteFactory, SafeText (line.impactColumn), measureFormat, renderWidth, Math.Max (1, line.font.TextFormatHeight)))
+                        {
+                            if (impactLayout.Metrics.Width > widestImpactCol)
+                                widestImpactCol = impactLayout.Metrics.Width;
+                        }
+
+                        using (TextLayout descLayout = new TextLayout (NinjaTrader.Core.Globals.DirectWriteFactory, SafeText (line.descColumn), measureFormat, renderWidth, Math.Max (1, line.font.TextFormatHeight)))
+                        {
+                            if (descLayout.Metrics.Width > widestDescCol)
+                                widestDescCol = descLayout.Metrics.Width;
+                        }
                     }
 
-                    using (TextLayout impactLayout = new TextLayout (NinjaTrader.Core.Globals.DirectWriteFactory, SafeText (line.impactColumn), measureFormat, renderWidth, Math.Max (1, line.font.TextFormatHeight)))
-                    {
-                        if (impactLayout.Metrics.Width > widestImpactCol)
-                            widestImpactCol = impactLayout.Metrics.Width;
-                    }
+                    widestTimeCol += TIME_PAD;
+                    widestImpactCol += IMPACT_PAD;
+                    widestDescCol += DESC_PAD;
 
-                    using (TextLayout descLayout = new TextLayout (NinjaTrader.Core.Globals.DirectWriteFactory, SafeText (line.descColumn), measureFormat, renderWidth, Math.Max (1, line.font.TextFormatHeight)))
-                    {
-                        if (descLayout.Metrics.Width > widestDescCol)
-                            widestDescCol = descLayout.Metrics.Width;
-                    }
+                    _measuredList = snapshot;
+                    _measuredRenderWidth = renderWidth;
+                    _measuredTimeCol = widestTimeCol;
+                    _measuredImpactCol = widestImpactCol;
+                    _measuredDescCol = widestDescCol;
                 }
-
-                widestTimeCol += TIME_PAD;
-                widestImpactCol += IMPACT_PAD;
-                widestDescCol += DESC_PAD;
+                else
+                {
+                    widestTimeCol = _measuredTimeCol;
+                    widestImpactCol = _measuredImpactCol;
+                    widestDescCol = _measuredDescCol;
+                }
 
                 longestLine = widestTimeCol + widestImpactCol + widestDescCol;
                 totalHeight = Math.Max (defaultFont.TextFormatHeight, titleFont.TextFormatHeight);
@@ -388,16 +408,13 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
 
                 if (ShowBackground)
                 {
-                    using (SharpDX.Direct2D1.Brush bgBrush = SafeBrush (BackgroundColor).ToDxBrush (RenderTarget))
-                    {
-                        RectangleF recBackground = new RectangleF (
-                            startPointX - 5,
-                            startPointY - 5,
-                            blockWidth,
-                            blockHeight);
+                    RectangleF recBackground = new RectangleF (
+                        startPointX - 5,
+                        startPointY - 5,
+                        blockWidth,
+                        blockHeight);
 
-                        RenderTarget.FillRectangle (recBackground, bgBrush);
-                    }
+                    RenderTarget.FillRectangle (recBackground, GetDxBrushCached (SafeBrush (BackgroundColor)));
                 }
 
                 for (int i = 0; i < snapshot.Count; i++)
@@ -414,25 +431,23 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
                     float x = startPointX;
                     float y = startPointY + (i * rowHeight);
 
-                    System.Windows.Media.Brush mediaBrush = SafeBrush (line.brush);
+                    // Device brushes come from the per-WPF-brush cache — the line
+                    // brushes are a small fixed set of field references.
+                    SharpDX.Direct2D1.Brush dxBrush = GetDxBrushCached (SafeBrush (line.brush));
 
-                    using (SharpDX.Direct2D1.Brush dxBrush = mediaBrush.ToDxBrush (RenderTarget))
                     using (TextLayout timeLayout = new TextLayout (NinjaTrader.Core.Globals.DirectWriteFactory, SafeText (line.timeColumn), formatToUse, renderWidth, rowHeight))
                     using (TextLayout impactLayout = new TextLayout (NinjaTrader.Core.Globals.DirectWriteFactory, SafeText (line.impactColumn), formatToUse, renderWidth, rowHeight))
                     using (TextLayout descLayout = new TextLayout (NinjaTrader.Core.Globals.DirectWriteFactory, SafeText (line.descColumn), formatToUse, renderWidth, rowHeight))
                     {
                         if (ShowNewsTimeBackBrush && i > 0)
                         {
-                            using (SharpDX.Direct2D1.Brush timeBackDxBrush = SafeBrush (NewsTimeBackBrush).ToDxBrush (RenderTarget))
-                            {
-                                RectangleF timeBackRect = new RectangleF (
-                                    x - 2,
-                                    y - 1,
-                                    Math.Max (1, widestTimeCol - 4),
-                                    Math.Max (1, rowHeight));
+                            RectangleF timeBackRect = new RectangleF (
+                                x - 2,
+                                y - 1,
+                                Math.Max (1, widestTimeCol - 4),
+                                Math.Max (1, rowHeight));
 
-                                RenderTarget.FillRectangle (timeBackRect, timeBackDxBrush);
-                            }
+                            RenderTarget.FillRectangle (timeBackRect, GetDxBrushCached (SafeBrush (NewsTimeBackBrush)));
                         }
 
                         RenderTarget.DrawTextLayout (new Vector2 (x, y), timeLayout, dxBrush, DrawTextOptions.NoSnap);
@@ -959,6 +974,43 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
             if (_fmtHeader    != null) { _fmtHeader.Dispose ();    _fmtHeader    = null; }
             if (_fmtLineAlert != null) { _fmtLineAlert.Dispose (); _fmtLineAlert = null; }
             if (_fmtTitle     != null) { _fmtTitle.Dispose ();     _fmtTitle     = null; }
+        }
+
+        // Column-width measurement cache — valid for one published list instance
+        // at one panel width (see the OnRender measurement gate).
+        private List<TextLine> _measuredList;
+        private float _measuredRenderWidth;
+        private float _measuredTimeCol;
+        private float _measuredImpactCol;
+        private float _measuredDescCol;
+
+        // Device brushes cached per source WPF brush. The brush set is small and
+        // fixed (line/background/time-back colors are field or property references),
+        // so the cache stays bounded. Invalidated with the TextFormats on render
+        // target change and disposed in State.Terminated.
+        private readonly Dictionary<System.Windows.Media.Brush, SharpDX.Direct2D1.Brush> _dxBrushCache = new Dictionary<System.Windows.Media.Brush, SharpDX.Direct2D1.Brush> ();
+
+        private SharpDX.Direct2D1.Brush GetDxBrushCached (System.Windows.Media.Brush brush)
+        {
+            SharpDX.Direct2D1.Brush dxBrush;
+
+            if (!_dxBrushCache.TryGetValue (brush, out dxBrush))
+            {
+                dxBrush = brush.ToDxBrush (RenderTarget);
+                _dxBrushCache[brush] = dxBrush;
+            }
+
+            return dxBrush;
+        }
+
+        private void DisposeDxBrushCache ()
+        {
+            foreach (SharpDX.Direct2D1.Brush cachedBrush in _dxBrushCache.Values)
+            {
+                try { cachedBrush.Dispose (); } catch { }
+            }
+
+            _dxBrushCache.Clear ();
         }
 
         private string GetNodeText (XmlNode node, string childName)

@@ -507,7 +507,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 Description = "GodZillaKilla — strategy using direct KingOrderBlock/PANAKanal/ThunderZilla/SuperJumpBoost/SumoPullback/NobleCloud child indicator signals.";
                 Name = "GodZillaKilla";
                 StrategyName = Name;
-                _strategyVersion = "1.9.2 Beta";
+                _strategyVersion = "1.9.3 Beta";
 
                 Author = "Playr101";
                 Credits = "GreyBeard, ninZa.co, RenkoKings, ES, rbro999";
@@ -887,6 +887,11 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             }
             else if (State == State.DataLoaded)
             {
+                // Convert the session-window DateTimes to HHMMSS ints once — the
+                // window checkers run on the tick path and previously re-converted
+                // these fixed properties on every call.
+                CacheTradingWindowTimes ();
+
                 // Build the five child indicators directly
                 // and mirrors the gbGodZillaSignals input model.
                 _king = gbKingOrderBlock (
@@ -1306,6 +1311,10 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             if (BarsInProgress != 0)
                 return;
 
+            // Fresh ATM-position memo for this primary-bar callback — never serve
+            // a value memoized during the preceding tick-series callback.
+            ResetTickAtmPositionCache ();
+
             // Futures "day" is the trading session, not the calendar date.
             // Reset session PnL only from the primary series FirstBarOfSession
             // so the reset occurs at the Trading Hours template session open
@@ -1379,34 +1388,25 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             if (currentTradePosition != MarketPosition.Flat && !_reverseOnAlternateSignal)
                 return;
 
-            // 8. Indicator Signal Processing
-            double koRaw = SafeSignalRead (_king.Signal_Trade, "KO");
-            double paRaw = SafeSignalRead (_pana.Signal_Trade, "PA");
-            double thRaw = SafeSignalRead (_thunder.Signal_Trade, "TH");
-            double sjRaw = SafeSignalRead (_sjb.Signal_Trade, "SJ");
-            double suRaw = SafeSignalRead (_sumo.Signal_Trade, "SU");
-            double ncRaw  = SafeSignalRead (_nc.Signal_Trade,  "NC");
+            // 8. Indicator Signal Processing — reuse the per-bar snapshot computed
+            // by UpdateNormalizedSignalSeriesAndDrawSignalArrows in section 4 (the
+            // helper no-ops when the snapshot is already fresh for this bar). The
+            // normalized series were also written there.
+            ComputeBarSignalSnapshot ();
 
-            int ko = ComputeSignal(UseKOSignals, koRaw, KO_LongOperator, KO_LongValue, KO_ShortOperator, KO_ShortValue);
-            int pa = ComputeSignal(UsePASignals, paRaw, PA_LongOperator, PA_LongValue, PA_ShortOperator, PA_ShortValue);
-            int th = ComputeSignal(UseTHSignals, thRaw, TH_LongOperator, TH_LongValue, TH_ShortOperator, TH_ShortValue);
-            int sj = ComputeSignal(UseSJSignals, sjRaw, SJ_LongOperator, SJ_LongValue, SJ_ShortOperator, SJ_ShortValue);
-            int su = ComputeSignal(UseSUSignals, suRaw, SU_LongOperator, SU_LongValue, SU_ShortOperator, SU_ShortValue);
-            int nc  = ComputeSignal(UseNCSignals,  ncRaw,  NC_LongOperator,  NC_LongValue,  NC_ShortOperator,  NC_ShortValue);
+            double koRaw = _barKoRaw;
+            double paRaw = _barPaRaw;
+            double thRaw = _barThRaw;
+            double sjRaw = _barSjRaw;
+            double suRaw = _barSuRaw;
+            double ncRaw = _barNcRaw;
 
-            // Update Normalized Series for visuals/confluence
-            if (_koSignalSeries != null)
-                _koSignalSeries[0] = ko;
-            if (_paSignalSeries != null)
-                _paSignalSeries[0] = pa;
-            if (_thSignalSeries != null)
-                _thSignalSeries[0] = th;
-            if (_sjSignalSeries != null)
-                _sjSignalSeries[0] = sj;
-            if (_suSignalSeries != null)
-                _suSignalSeries[0] = su;
-            if (_ncSignalSeries != null)
-                _ncSignalSeries[0] = nc;
+            int ko = _barKo;
+            int pa = _barPa;
+            int th = _barTh;
+            int sj = _barSj;
+            int su = _barSu;
+            int nc = _barNc;
 
             // Define Directional Booleans
             bool koLong = ko == 1 && UseKOSignals;
@@ -3368,36 +3368,64 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 SharpDX.Direct2D1.MeasuringMode.Natural);
         }
 
+        // Per-bar signal snapshot. Computed once per primary bar by
+        // ComputeBarSignalSnapshot and shared by the visuals path and the entry
+        // logic in OnBarUpdate — previously each side recomputed the identical six
+        // Signal_Trade reads, six ComputeSignal normalizations, and six series
+        // writes on every primary bar.
+        private double _barKoRaw, _barPaRaw, _barThRaw, _barSjRaw, _barSuRaw, _barNcRaw;
+        private int _barKo, _barPa, _barTh, _barSj, _barSu, _barNc;
+        private int _barSignalSnapshotBar = -1;
+
+        private void ComputeBarSignalSnapshot ()
+        {
+            if (_barSignalSnapshotBar == CurrentBar)
+                return;
+
+            _barKoRaw = SafeSignalRead (_king?.Signal_Trade, "KO");
+            _barPaRaw = SafeSignalRead (_pana?.Signal_Trade, "PA");
+            _barThRaw = SafeSignalRead (_thunder?.Signal_Trade, "TH");
+            _barSjRaw = SafeSignalRead (_sjb?.Signal_Trade, "SJ");
+            _barSuRaw = SafeSignalRead (_sumo?.Signal_Trade, "SU");
+            _barNcRaw = SafeSignalRead (_nc?.Signal_Trade, "NC");
+
+            _barKo = ComputeSignal (UseKOSignals, _barKoRaw, KO_LongOperator, KO_LongValue, KO_ShortOperator, KO_ShortValue);
+            _barPa = ComputeSignal (UsePASignals, _barPaRaw, PA_LongOperator, PA_LongValue, PA_ShortOperator, PA_ShortValue);
+            _barTh = ComputeSignal (UseTHSignals, _barThRaw, TH_LongOperator, TH_LongValue, TH_ShortOperator, TH_ShortValue);
+            _barSj = ComputeSignal (UseSJSignals, _barSjRaw, SJ_LongOperator, SJ_LongValue, SJ_ShortOperator, SJ_ShortValue);
+            _barSu = ComputeSignal (UseSUSignals, _barSuRaw, SU_LongOperator, SU_LongValue, SU_ShortOperator, SU_ShortValue);
+            _barNc = ComputeSignal (UseNCSignals, _barNcRaw, NC_LongOperator, NC_LongValue, NC_ShortOperator, NC_ShortValue);
+
+            if (_koSignalSeries != null)
+                _koSignalSeries[0] = _barKo;
+            if (_paSignalSeries != null)
+                _paSignalSeries[0] = _barPa;
+            if (_thSignalSeries != null)
+                _thSignalSeries[0] = _barTh;
+            if (_sjSignalSeries != null)
+                _sjSignalSeries[0] = _barSj;
+            if (_suSignalSeries != null)
+                _suSignalSeries[0] = _barSu;
+            if (_ncSignalSeries != null)
+                _ncSignalSeries[0] = _barNc;
+
+            // Marked complete only after the series writes so an exception mid-way
+            // (caught by the caller) forces a clean recompute on the next attempt.
+            _barSignalSnapshotBar = CurrentBar;
+        }
+
         private void UpdateNormalizedSignalSeriesAndDrawSignalArrows ()
         {
             try
             {
-                double koRaw = SafeSignalRead (_king?.Signal_Trade, "KO");
-                double paRaw = SafeSignalRead (_pana?.Signal_Trade, "PA");
-                double thRaw = SafeSignalRead (_thunder?.Signal_Trade, "TH");
-                double sjRaw = SafeSignalRead (_sjb?.Signal_Trade, "SJ");
-                double suRaw = SafeSignalRead (_sumo?.Signal_Trade, "SU");
-                double ncRaw = SafeSignalRead (_nc?.Signal_Trade, "NC");
+                ComputeBarSignalSnapshot ();
 
-                int ko = ComputeSignal (UseKOSignals, koRaw, KO_LongOperator, KO_LongValue, KO_ShortOperator, KO_ShortValue);
-                int pa = ComputeSignal (UsePASignals, paRaw, PA_LongOperator, PA_LongValue, PA_ShortOperator, PA_ShortValue);
-                int th = ComputeSignal (UseTHSignals, thRaw, TH_LongOperator, TH_LongValue, TH_ShortOperator, TH_ShortValue);
-                int sj = ComputeSignal (UseSJSignals, sjRaw, SJ_LongOperator, SJ_LongValue, SJ_ShortOperator, SJ_ShortValue);
-                int su = ComputeSignal (UseSUSignals, suRaw, SU_LongOperator, SU_LongValue, SU_ShortOperator, SU_ShortValue);
-                int nc = ComputeSignal (UseNCSignals, ncRaw, NC_LongOperator, NC_LongValue, NC_ShortOperator, NC_ShortValue);
-
-                if (_koSignalSeries != null)
-                    _koSignalSeries[0] = ko;
-                if (_paSignalSeries != null)
-                    _paSignalSeries[0] = pa;
-                if (_thSignalSeries != null)
-                    _thSignalSeries[0] = th;
-                if (_sjSignalSeries != null)
-                    _sjSignalSeries[0] = sj;
-                if (_suSignalSeries != null)
-                    _suSignalSeries[0] = su;
-                if (_ncSignalSeries != null)
-                    _ncSignalSeries[0] = nc;
+                int ko = _barKo;
+                int pa = _barPa;
+                int th = _barTh;
+                int sj = _barSj;
+                int su = _barSu;
+                int nc = _barNc;
 
                 if (!SignalVisualFilterPassed (ko))
                     ko = 0;
@@ -3425,7 +3453,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 DrawSignalArrow ("GZ_NC_SIG_", nc, UseNCSignals && ShowNCSignalArrows, NCSignalArrowBrush, 10, ShowNCSignalArrowLabels, NCSignalArrowText);
 
                 int groupSize = 0;
-                int groupSignal = GetSameBarGroupTriggerSignal (koRaw, paRaw, thRaw, sjRaw, suRaw, ncRaw, ko, pa, th, sj, su, nc, out groupSize);
+                int groupSignal = GetSameBarGroupTriggerSignal (_barKoRaw, _barPaRaw, _barThRaw, _barSjRaw, _barSuRaw, _barNcRaw, ko, pa, th, sj, su, nc, out groupSize);
 
                 SetSignalBackBrush (groupSignal);
 
@@ -4403,20 +4431,41 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             }
         }
 
+        // Cached ToTime() ints for the Session Parameters windows. The DateTime
+        // properties are fixed for the life of a run (NT8 rebuilds the strategy on
+        // any property change), so converting them once in DataLoaded removes up to
+        // eight DateTime->int conversions per window check on the tick path.
+        private int _tf1StartInt, _tf1EndInt;
+        private int _tf2StartInt, _tf2EndInt;
+        private int _tf3StartInt, _tf3EndInt;
+        private int _skipStartInt, _skipEndInt;
+
+        private void CacheTradingWindowTimes ()
+        {
+            _tf1StartInt  = ToTime (StartTime1);
+            _tf1EndInt    = ToTime (EndTime1);
+            _tf2StartInt  = ToTime (StartTime2);
+            _tf2EndInt    = ToTime (EndTime2);
+            _tf3StartInt  = ToTime (StartTime3);
+            _tf3EndInt    = ToTime (EndTime3);
+            _skipStartInt = ToTime (SkipStartTime);
+            _skipEndInt   = ToTime (SkipEndTime);
+        }
+
         private bool CheckTradingTimeframes (int currentTime)
         {
             bool anyTradingWindowEnabled = EnableTF1 || EnableTF2 || EnableTF3;
 
-            bool tf1 = EnableTF1 && IsTimeInWindow (currentTime, ToTime (StartTime1), ToTime (EndTime1));
-            bool tf2 = EnableTF2 && IsTimeInWindow (currentTime, ToTime (StartTime2), ToTime (EndTime2));
-            bool tf3 = EnableTF3 && IsTimeInWindow (currentTime, ToTime (StartTime3), ToTime (EndTime3));
+            bool tf1 = EnableTF1 && IsTimeInWindow (currentTime, _tf1StartInt, _tf1EndInt);
+            bool tf2 = EnableTF2 && IsTimeInWindow (currentTime, _tf2StartInt, _tf2EndInt);
+            bool tf3 = EnableTF3 && IsTimeInWindow (currentTime, _tf3StartInt, _tf3EndInt);
 
             bool allowedByTradingWindows = !anyTradingWindowEnabled || tf1 || tf2 || tf3;
 
             if (!allowedByTradingWindows)
                 return false;
 
-            if (EnableSkipTimeWindow && IsTimeInWindow (currentTime, ToTime (SkipStartTime), ToTime (SkipEndTime)))
+            if (EnableSkipTimeWindow && IsTimeInWindow (currentTime, _skipStartInt, _skipEndInt))
                 return false;
 
             return true;
@@ -4614,16 +4663,16 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             int previousTime = ToTime (Time[1]);
 
             bool ended1 = EnableTF1
-        && IsTimeInWindow (previousTime, ToTime (StartTime1), ToTime (EndTime1))
-        && !IsTimeInWindow (currentTime, ToTime (StartTime1), ToTime (EndTime1));
+        && IsTimeInWindow (previousTime, _tf1StartInt, _tf1EndInt)
+        && !IsTimeInWindow (currentTime, _tf1StartInt, _tf1EndInt);
 
             bool ended2 = EnableTF2
-        && IsTimeInWindow (previousTime, ToTime (StartTime2), ToTime (EndTime2))
-        && !IsTimeInWindow (currentTime, ToTime (StartTime2), ToTime (EndTime2));
+        && IsTimeInWindow (previousTime, _tf2StartInt, _tf2EndInt)
+        && !IsTimeInWindow (currentTime, _tf2StartInt, _tf2EndInt);
 
             bool ended3 = EnableTF3
-        && IsTimeInWindow (previousTime, ToTime (StartTime3), ToTime (EndTime3))
-        && !IsTimeInWindow (currentTime, ToTime (StartTime3), ToTime (EndTime3));
+        && IsTimeInWindow (previousTime, _tf3StartInt, _tf3EndInt)
+        && !IsTimeInWindow (currentTime, _tf3StartInt, _tf3EndInt);
 
             bool flatten1 = ended1 && FlattenTF1;
             bool flatten2 = ended2 && FlattenTF2;
@@ -4660,8 +4709,12 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         {
             try
             {
+                // Tick-cached read: within one tick/bar callback this can be queried
+                // several times (reversal gate, pending-entry gate, debug prints) —
+                // the memo collapses them to a single NT8 ATM lookup. The cache is
+                // reset at the top of both the tick-series and primary-bar handlers.
                 if (OrderMode == OrderManagementMode.AtmStrategy && !string.IsNullOrEmpty (atmStrategyId))
-                    return GetAtmStrategyMarketPosition (atmStrategyId);
+                    return GetAtmStrategyMarketPositionTickCached (atmStrategyId);
             }
             catch { }
 
@@ -4768,6 +4821,13 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 ClearPendingSignalEntry ();
                 return;
             }
+
+            // Nothing queued — skip the trading-window/news gate work for this tick.
+            // The Clear* calls below are no-ops when nothing is pending, so bailing
+            // here is behavior-identical and removes the ToTime/window/news
+            // evaluation from the overwhelming majority of ticks.
+            if (!pendingReverseActive && !pendingSignalEntryActive)
+                return;
 
             int tickTime = ToTime (Times[1][0]);
 
@@ -6322,9 +6382,10 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
         // Per-tick memo for GetAtmStrategyMarketPosition. The ATM position cannot
         // change within a single tick, but EvictStaleAtmIdsIfTimedOut (via
-        // IsAtmMidTradeStale) and the close-detection poll both query the same id.
-        // Caching collapses those two NT8 ATM lookups into one per tick. Used only on
-        // the tick-series call paths; reset at the top of every tick handler.
+        // IsAtmMidTradeStale), the close-detection poll, and GetCurrentTradePosition
+        // all query the same id. Caching collapses those NT8 ATM lookups into one
+        // per callback. Reset at the top of both the tick-series handler
+        // (UpdateDailyPnlOnTickSeries) and the primary-bar path (OnBarUpdate BIP0).
         private string _tickAtmPosCacheId;
         private Cbi.MarketPosition _tickAtmPosCacheValue;
 

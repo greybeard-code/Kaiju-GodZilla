@@ -107,7 +107,11 @@ public class gbPANAKanal : Indicator
 
 	private Series<double> seriesSK;
 
-	private Dictionary<int, LineInfo> dictLineInfo;
+	// SortedList (keyed by bar index) instead of Dictionary: "last line" is the
+	// highest-bar entry by contract rather than by fragile insertion order, and
+	// the render loop gets O(1) Values[i] access — Dictionary forced O(n)
+	// ElementAt() per index, making DrawLines O(n²) per frame.
+	private SortedList<int, LineInfo> dictLineInfo;
 
 	private Dictionary<int, MarkerInfo> dictMarkers;
 
@@ -703,7 +707,7 @@ public class gbPANAKanal : Indicator
 			seriesFibonacci1 = new Series<double>(this, MaximumBarsLookBack.Infinite);
 			seriesFibonacci2 = new Series<double>(this, MaximumBarsLookBack.Infinite);
 			seriesSK = new Series<double>(this);
-			dictLineInfo = new Dictionary<int, LineInfo>();
+			dictLineInfo = new SortedList<int, LineInfo>();
 			dictMarkers = new Dictionary<int, MarkerInfo>();
 			isCustomMarkerRenderingMethod = MarkerRenderingMethod == gbPANAKanal_MarkerRenderingMethod.Custom;
 			isOnBarCloseMode = Calculate == Calculate.OnBarClose;
@@ -1222,7 +1226,7 @@ public class gbPANAKanal : Indicator
 		{
 			return;
 		}
-		LineInfo lineInfo = dictLineInfo.Values.Last();
+		LineInfo lineInfo = dictLineInfo.Values[dictLineInfo.Count - 1];
 		bool isTop = lineInfo.IsTop;
 		if (lineInfo.IsBroken)
 		{
@@ -1360,7 +1364,7 @@ public class gbPANAKanal : Indicator
 		}
 		if (!LineInactiveEnabled)
 		{
-			LineInfo value = dictLineInfo.ElementAt(dictLineInfo.Count - 1).Value;
+			LineInfo value = dictLineInfo.Values[dictLineInfo.Count - 1];
 			if (!value.IsBroken)
 			{
 				DrawOneLine(chartScale, value);
@@ -1370,7 +1374,7 @@ public class gbPANAKanal : Indicator
 		{
 			for (int num = dictLineInfo.Count - 1; num >= 0; num--)
 			{
-				DrawOneLine(chartScale, dictLineInfo.ElementAt(num).Value);
+				DrawOneLine(chartScale, dictLineInfo.Values[num]);
 			}
 		}
 	}

@@ -1,5 +1,6 @@
 #region Using declarations
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
@@ -139,6 +140,10 @@ public class gbBarStatus : Indicator
 
 	private double lowerBound;
 
+	private double lastDrawnUpperBound = double.NaN;
+
+	private double lastDrawnLowerBound = double.NaN;
+
 	private int displayState;
 
 	private TimeSpan remainingTime;
@@ -184,6 +189,17 @@ public class gbBarStatus : Indicator
 	private ChartScale chartScale;
 
 	private Brush eBrush;
+
+	// Device-brush cache for the reference-stable WPF brushes (bound strokes,
+	// label text, MasterBrush). eBrush is excluded: in gradient mode it is a NEW
+	// WPF brush every frame, so it gets one per-frame DX conversion (eDxBrush)
+	// instead of the previous four. Cache invalidates on RenderTarget change and
+	// disposes in State.Terminated.
+	private readonly Dictionary<Brush, SharpDX.Direct2D1.Brush> dxBrushCache = new Dictionary<Brush, SharpDX.Direct2D1.Brush>();
+
+	private SharpDX.Direct2D1.RenderTarget dxCacheRenderTarget;
+
+	private SharpDX.Direct2D1.Brush eDxBrush;
 
 	private int symbolPadding;
 
@@ -582,6 +598,7 @@ public class gbBarStatus : Indicator
 					timer.Tick -= OnTick;
 					timer = null;
 				}
+				DisposeDxBrushCache();
 				break;
 		}
 	}
@@ -685,13 +702,20 @@ public class gbBarStatus : Indicator
 			}
 			if (isCharting && CurrentBar >= 1)
 			{
-				if (BrushExtensions.IsTransparent(Plots[0].Brush))
+				// The bounds are fixed within a bar (derived from prior-bar prices),
+				// but this indicator calculates OnEachTick — re-anchoring the
+				// transparent auto-scale rays on every tick was pure churn. Redraw
+				// only when a bound actually moves; the horizontal rays extend
+				// infinitely right, so an older anchor bar renders identically.
+				if (BrushExtensions.IsTransparent(Plots[0].Brush) && upperBound != lastDrawnUpperBound)
 				{
+					lastDrawnUpperBound = upperBound;
 					string tag = prefix + ".bound.upper";
 					((DrawingTool)Draw.Ray(this, tag, IsAutoScale, 1, upperBound, 0, upperBound, Brushes.Transparent, DashStyleHelper.Solid, 1)).IgnoresUserInput = true;
 				}
-				if (BrushExtensions.IsTransparent(Plots[1].Brush))
+				if (BrushExtensions.IsTransparent(Plots[1].Brush) && lowerBound != lastDrawnLowerBound)
 				{
+					lastDrawnLowerBound = lowerBound;
 					string tag2 = prefix + ".bound.lower";
 					((DrawingTool)Draw.Ray(this, tag2, IsAutoScale, 1, lowerBound, 0, lowerBound, Brushes.Transparent, DashStyleHelper.Solid, 1)).IgnoresUserInput = true;
 				}
@@ -779,6 +803,13 @@ public class gbBarStatus : Indicator
 		{
 			return;
 		}
+		// Device brushes are tied to the RenderTarget — rebuild the cache lazily
+		// when NT8 hands us a new target (resize / device loss).
+		if (!object.ReferenceEquals(RenderTarget, dxCacheRenderTarget))
+		{
+			DisposeDxBrushCache();
+			dxCacheRenderTarget = RenderTarget;
+		}
 		if (!isPriceBased)
 		{
 			if (allowPainting)
@@ -807,9 +838,17 @@ public class gbBarStatus : Indicator
 				symbolRect.X = (float)symbolCenter.X - SymbolSize - ProgressBarBorder;
 				symbolRect.Y = (float)symbolCenter.Y - SymbolSize - ProgressBarBorder;
 				eBrush = ((!GradientEnabled) ? MasterBrush : CreateGradientBrushByInput(elapsedPercentage));
-				DrawProgressBar();
-				DrawInfoText();
-				DrawSymbol();
+				// One DX conversion per frame shared by the progress bar, info text,
+				// and symbol — previously each draw call converted eBrush separately.
+				// Not dictionary-cached because gradient mode creates a new WPF brush
+				// every frame.
+				using (eDxBrush = DxExtensions.ToDxBrush(eBrush, RenderTarget))
+				{
+					DrawProgressBar();
+					DrawInfoText();
+					DrawSymbol();
+				}
+				eDxBrush = null;
 				if (!InfoTextEnabled)
 				{
 					refreshRect.X = progressFullRect.X - (float)padding;
@@ -833,21 +872,15 @@ public class gbBarStatus : Indicator
 		Vector2 val2 = new Vector2((float)(xByBarIndex + BoundWidth), val.Y);
 		Vector2 val3 = new Vector2((float)xByBarIndex, (float)chartScale.GetYByValue(lowerBound));
 		Vector2 val4 = new Vector2((float)(xByBarIndex + BoundWidth), val3.Y);
-		using (SharpDX.Direct2D1.Brush upperDx = DxExtensions.ToDxBrush(BoundUpper.Brush, RenderTarget))
-			RenderTarget.DrawLine(val, val2, upperDx, BoundUpper.Width, BoundUpper.StrokeStyle);
+		RenderTarget.DrawLine(val, val2, GetDxBrushCached(BoundUpper.Brush), BoundUpper.Width, BoundUpper.StrokeStyle);
 		if (LabelEnabled)
 		{
-			using (SharpDX.Direct2D1.Brush fgDx = DxExtensions.ToDxBrush(LabelTextBrush, RenderTarget))
-			using (SharpDX.Direct2D1.Brush bgDx = DxExtensions.ToDxBrush(BoundUpper.Brush, RenderTarget))
-				PaintPriceMarker((int)val2.X, (int)val2.Y, isLeft: true, FormatPriceMarker(upperBound), LabelTextFont, fgDx, bgDx);
+			PaintPriceMarker((int)val2.X, (int)val2.Y, isLeft: true, FormatPriceMarker(upperBound), LabelTextFont, GetDxBrushCached(LabelTextBrush), GetDxBrushCached(BoundUpper.Brush));
 		}
-		using (SharpDX.Direct2D1.Brush lowerDx = DxExtensions.ToDxBrush(BoundLower.Brush, RenderTarget))
-			RenderTarget.DrawLine(val3, val4, lowerDx, BoundLower.Width, BoundLower.StrokeStyle);
+		RenderTarget.DrawLine(val3, val4, GetDxBrushCached(BoundLower.Brush), BoundLower.Width, BoundLower.StrokeStyle);
 		if (LabelEnabled)
 		{
-			using (SharpDX.Direct2D1.Brush fgDx = DxExtensions.ToDxBrush(LabelTextBrush, RenderTarget))
-			using (SharpDX.Direct2D1.Brush bgDx = DxExtensions.ToDxBrush(BoundLower.Brush, RenderTarget))
-				PaintPriceMarker((int)val4.X, (int)val4.Y, isLeft: true, FormatPriceMarker(lowerBound), LabelTextFont, fgDx, bgDx);
+			PaintPriceMarker((int)val4.X, (int)val4.Y, isLeft: true, FormatPriceMarker(lowerBound), LabelTextFont, GetDxBrushCached(LabelTextBrush), GetDxBrushCached(BoundLower.Brush));
 		}
 	}
 
@@ -857,11 +890,8 @@ public class gbBarStatus : Indicator
 		{
 			displayPercentage = ((CountMode != gbBarStatus_CountMode.CountUp) ? (100.0 - elapsedPercentage) : elapsedPercentage);
 			progressDisplayRect.Width = Math.Max(0f, Math.Min(eProgressBarWidth, Convert.ToInt32(displayPercentage * (double)eProgressBarWidth / 100.0)));
-			using (SharpDX.Direct2D1.Brush eDx = DxExtensions.ToDxBrush(eBrush, RenderTarget))
-			{
-				RenderTarget.FillRectangle(progressDisplayRect, eDx);
-				RenderTarget.DrawRectangle(progressFullRect, eDx, (float)ProgressBarBorder);
-			}
+			RenderTarget.FillRectangle(progressDisplayRect, eDxBrush);
+			RenderTarget.DrawRectangle(progressFullRect, eDxBrush, (float)ProgressBarBorder);
 		}
 	}
 
@@ -873,16 +903,14 @@ public class gbBarStatus : Indicator
 		Vector2 val2 = new Vector2();
 		val2.X = (float)symbolCenter.X + SymbolSize;
 		val2.Y = (float)symbolCenter.Y;
-		using (SharpDX.Direct2D1.Brush eDx = DxExtensions.ToDxBrush(eBrush, RenderTarget))
-			RenderTarget.DrawLine(val, val2, eDx, (float)ProgressBarBorder);
+		RenderTarget.DrawLine(val, val2, eDxBrush, (float)ProgressBarBorder);
 		if (CountMode == gbBarStatus_CountMode.CountUp)
 		{
 			val.X = (float)symbolCenter.X;
 			val.Y = (float)symbolCenter.Y - SymbolSize;
 			val2.X = (float)symbolCenter.X;
 			val2.Y = (float)symbolCenter.Y + SymbolSize;
-			using (SharpDX.Direct2D1.Brush eDx = DxExtensions.ToDxBrush(eBrush, RenderTarget))
-				RenderTarget.DrawLine(val, val2, eDx, (float)ProgressBarBorder);
+			RenderTarget.DrawLine(val, val2, eDxBrush, (float)ProgressBarBorder);
 		}
 	}
 
@@ -897,7 +925,7 @@ public class gbBarStatus : Indicator
 			string text = ((!isSecond && !isMinute) ? displayAmount.ToString() : FormatDisplayTime());
 			int num = ((!ProgressBarEnabled) ? (InfoTextPadding - 2 * ProgressBarBorder - symbolPadding) : InfoTextPadding);
 			refreshRect.X = progressFullRect.X - (float)num - ComputeTextSize(text, InfoTextFont).Width - (float)padding;
-			DrawText(text, InfoTextFont, progressFullRect.X - (float)num, progressFullRect.Y + progressFullRect.Height / 2f, -1, 0, eBrush);
+			DrawText(text, InfoTextFont, progressFullRect.X - (float)num, progressFullRect.Y + progressFullRect.Height / 2f, -1, 0, eDxBrush);
 		}
 	}
 
@@ -1166,7 +1194,7 @@ public class gbBarStatus : Indicator
 		val11.Dispose();
 	}
 
-	private void DrawText(string text, SimpleFont font, float x, float y, int horizontalAlignment, int verticalAlignment, Brush brush)
+	private void DrawText(string text, SimpleFont font, float x, float y, int horizontalAlignment, int verticalAlignment, SharpDX.Direct2D1.Brush dxBrush)
 	{
 		TextFormat val = font.ToDirectWriteTextFormat();
 		Size2F val2 = ComputeTextSize(text, font);
@@ -1193,9 +1221,29 @@ public class gbBarStatus : Indicator
 		}
 		float num3 = ((verticalAlignment > 0) ? y : ((verticalAlignment < 0) ? (y - height) : (y - height / 2f)));
 			RectangleF val3 = new RectangleF(num2, num3, num, height);
-		using (SharpDX.Direct2D1.Brush dxBrush = DxExtensions.ToDxBrush(brush, RenderTarget))
-			RenderTarget.DrawText(text, val, val3, dxBrush);
+		RenderTarget.DrawText(text, val, val3, dxBrush);
 		val.Dispose();
+	}
+
+	private SharpDX.Direct2D1.Brush GetDxBrushCached(Brush brush)
+	{
+		SharpDX.Direct2D1.Brush dxBrush;
+		if (!dxBrushCache.TryGetValue(brush, out dxBrush))
+		{
+			dxBrush = DxExtensions.ToDxBrush(brush, RenderTarget);
+			dxBrushCache[brush] = dxBrush;
+		}
+		return dxBrush;
+	}
+
+	private void DisposeDxBrushCache()
+	{
+		foreach (SharpDX.Direct2D1.Brush cachedBrush in dxBrushCache.Values)
+		{
+			try { cachedBrush.Dispose(); } catch { }
+		}
+		dxBrushCache.Clear();
+		dxCacheRenderTarget = null;
 	}
 
 	private Size2F ComputeTextSize(string text, SimpleFont font)
