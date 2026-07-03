@@ -21,6 +21,10 @@ MONARCH/build/
 MONARCH/*.spec
 MONARCH/version_info.txt
 
+# Per-installation config (holds personal account numbers) — never commit.
+# Normally lives in NinjaTrader 8\MONARCH\; this guards against a stray copy here.
+MONARCH/config.json
+
 # ── OS / editor ───────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db

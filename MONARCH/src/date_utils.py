@@ -24,9 +24,15 @@ from typing import List
 
 # ── Core date helpers ─────────────────────────────────────────────────────────
 
-def trading_day_for(open_dt: datetime) -> date:
-    """Return the session date for a trade's open time."""
-    if open_dt.hour >= 18:
+def trading_day_for(open_dt: datetime, boundary_hour: int = 18) -> date:
+    """Return the session date for a trade's open time.
+
+    boundary_hour is the hour (0-23, in the chart's local time) at which a new
+    trading session begins. Default 18 (6 PM), correct when NT8 charts render in
+    ET. Override it (via config.json or --session-hour) if your charts use a
+    different timezone — e.g. 17 for CT, 15 for PT.
+    """
+    if open_dt.hour >= boundary_hour:
         return (open_dt + timedelta(days=1)).date()
     return open_dt.date()
 
@@ -117,7 +123,6 @@ def get_weeks_with_data(trading_days: List[date]) -> List[date]:
 def get_missing_weekly_dates(reports_dir: Path, weeks: List[date]) -> List[date]:
     """Return Fridays that have data but no weekly report file yet."""
     today = date.today()
-    current_friday = get_friday_of_week(get_report_date(today))
     missing = []
     for friday in weeks:
         if friday > today:

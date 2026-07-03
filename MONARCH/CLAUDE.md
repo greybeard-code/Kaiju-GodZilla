@@ -107,26 +107,52 @@ src/
 
 ## Accounts
 
-```python
-LIVE_ACCOUNTS = {'APEX750470000084', 'APEX750470000085'}
-ACCT_LABEL    = {'APEX750470000084': '084', 'APEX750470000085': '085'}
-ACCT_GRADE    = {'APEX750470000084': 'G4',  'APEX750470000085': 'G3'}
+Account label/grade maps are **not hardcoded** — the committed `ACCT_LABEL` /
+`ACCT_GRADE` in `config.py` ship **empty**. They are populated at runtime by
+`apply_account_config()` from the local `config.json` in `NinjaTrader 8\MONARCH\`
+— which lives **outside this repo**, so personal account numbers are never
+committed. Unknown accounts fall back to the last 6 chars of the account string
+(label) and `'?'` (grade), so MONARCH works with no config at all.
+
+`config.json` shape:
+
+```json
+{
+  "session_boundary_hour": 18,
+  "accounts": {
+    "<ACCOUNT_ID>": { "label": "084", "grade": "G4" }
+  }
+}
 ```
 
-Sim accounts (names starting with `'Sim'`) are parsed from CSVs but flagged
-`is_live=False` and excluded from all reports and statistics.
+A starter `config.json` is written on first run by `ensure_local_config_template()`
+(skipped on `--dry-run`, never overwrites an existing file). `MONARCH/config.json`
+is also git-ignored as a safety net.
+
+**All accounts are included** in reports and statistics — prop firm, Sim, and
+any other account found in the logs are treated equally (since 1.0.1). There is no
+live/sim gating; Sim accounts are intentionally scannable alongside live ones.
 
 ---
 
 ## GodZilla CSV Format
 
-Columns written by NinjaTrader 8:
+Columns written by NinjaTrader 8.
+
+**GodZillaKilla 1.9.2+ (current, 11 columns):**
 
 ```
 OpenTime, Account, Instrument, OpenPrice, Qty, CloseTime,
-Trigger, Direction, AtmStrategyName, RealizedPnL,
-SignalCombo, UsedSignals, TradeResult, LastTradeLine
+Trigger, Direction, AtmStrategyName, RealizedPnL, TradeResult
 ```
+
+**GodZillaKilla ≤ 1.9.1 (legacy, 14 columns)** also appended
+`SignalCombo, UsedSignals, LastTradeLine` — these duplicated `Trigger`
+(e.g. `SET1-G3:KO+PA+SU`) and were removed in 1.9.2.
+
+Parsing uses `csv.DictReader` (by header name), so both layouts are supported.
+When `SignalCombo`/`UsedSignals` are absent, the parser falls back to `Trigger`
+so KO detection (`has_ko`) and combo grouping (`combo_clean`) keep working.
 
 - Files are named `GodZilla_*.csv`. `GodZuki_*.csv` files are excluded (strategy
   state files, not trade logs).
@@ -147,6 +173,14 @@ Session date = the calendar day on which the session **ends**.
 Trade open 22:10 on Tuesday   →  session date Wednesday
 Trade open 09:45 on Wednesday →  session date Wednesday
 ```
+
+The boundary is `trading_day_for(open_dt, boundary_hour)` — it compares
+`open_dt.hour` against `boundary_hour` (default 18). CSV timestamps are in the
+chart's local time, so this default is only correct when NT8 charts render in
+ET. Users on other timezones override the hour via `config.json`
+(`"session_boundary_hour": 17` for CT, `15` for PT, …) or `--session-hour N`
+for a single run (CLI wins over config). `get_session_boundary_hour()` in
+`config.py` clamps invalid values back to 18.
 
 Weekend guardrail in `get_report_date()`:
 - Saturday → preceding Friday
@@ -237,8 +271,12 @@ MONARCH.exe --weekly               Force-regenerate this week's summary
 MONARCH.exe --nt8-path "D:\NT8"   Override NT8 folder location
 MONARCH.exe --dry-run              Preview actions, write nothing
 MONARCH.exe -d / --daemon          Daemon mode: no pause at exit (Task Scheduler)
+MONARCH.exe --session-hour 17      Session-start hour in chart timezone (0-23)
 MONARCH.exe --version              Print version, author, website, and email
 ```
+
+`--session-hour` overrides `config.json`'s `session_boundary_hour` for one run;
+both default to 18 (6 PM). Use it when NT8 charts are not in ET.
 
 `--dry-run` skips log sync and all file writes but still parses trades and
 prints what it would have generated. Safe to run at any time.
@@ -285,7 +323,7 @@ Additional breakdown functions:
 - `grade_stats(trades)` – dict keyed by grade string (G3, G4, G5)
 - `ko_stats(trades)` – tuple `(with_ko_stats, without_ko_stats)`
 - `combo_stats(trades)` – list sorted by frequency, each item includes all stats keys plus `combo`
-- `account_stats(trades)` – dict keyed by full APEX account string
+- `account_stats(trades)` – dict keyed by the full account string
 
 ---
 
@@ -381,7 +419,8 @@ the `Remove-Item` line above clears it.
 
 | Version | Notes |
 |---------|-------|
+| 1.0.4   | Support GodZillaKilla 1.9.2 trade logs (11-column format — `SignalCombo`/`UsedSignals`/`LastTradeLine` removed). Parser falls back to `Trigger` for KO detection and combo grouping; `clean_combo` handles the `SET#-G#:` trigger form (incl. SET2). Legacy 14-column logs still parse unchanged. `TradeResult` falls back to the sign of PnL when blank. Configurable session-boundary hour (`config.json` `session_boundary_hour` / `--session-hour`) for non-ET chart timezones. Resilience: per-row parse isolation (one bad line no longer drops the rest of a file) and per-report generation isolation (one failed report no longer aborts the run or the hub/index update). Account label/grade maps moved out of `config.py` into the local `config.json` (auto-created on first run) so personal account numbers are no longer committed to the repo. Removed dead `is_live` field. |
 | 1.0.3   | Castle Bravo 4-week calendar now anchors to the current week's Friday instead of the most recent past Friday — current week no longer disappears Mon–Thu. |
 | 1.0.2   | Symbol Breakdown section on daily, weekly, and Castle Bravo — stats grouped by base ticker (MNQ, NQ, ES, etc.). Instrument label derived from log data; no contract-roll maintenance. |
-| 1.0.1   | Any GodZilla_* file supported; account derived from filename; all accounts (APEX + Sim) included in reports; per-account KPI breakdown in daily, weekly, and hub; daemon mode (`-d`); 60s countdown pause on manual runs; `--version` shows author/web/email; exe Properties metadata via `make_version_file.py`. |
+| 1.0.1   | Any GodZilla_* file supported; account derived from filename; all accounts (prop firm + Sim) included in reports; per-account KPI breakdown in daily, weekly, and hub; daemon mode (`-d`); 60s countdown pause on manual runs; `--version` shows author/web/email; exe Properties metadata via `make_version_file.py`. |
 | 1.0.0   | Initial release – modular rewrite of generate_report.py. Standalone exe, auto log sync, backfill, Sat/Sun guardrail, CastleBravo hub, MONARCH branding, icon support. |

@@ -9,17 +9,63 @@ import json
 from pathlib import Path
 
 # ── Branding ──────────────────────────────────────────────────────────────────
-VERSION  = "1.0.3"
+VERSION  = "1.0.4"
 APP_NAME = "MONARCH Intelligence Report System"
 HUB_FILE = "CastleBravo.html"
 AUTHOR   = "GreyBeard"
 EMAIL    = "greybeard@greybeardconsulting.net"
 WEBSITE  = "https://greybeardconsulting.net"
 
-# ── Account constants ─────────────────────────────────────────────────────────
-# Known account labels and grade thresholds – extended automatically for new accounts.
-ACCT_LABEL = {'APEX750470000084': '084', 'APEX750470000085': '085'}
-ACCT_GRADE = {'APEX750470000084': 'G4',  'APEX750470000085': 'G3'}
+# ── Account label / grade maps ────────────────────────────────────────────────
+# Populated at runtime from the local config.json (in NinjaTrader 8\MONARCH\),
+# which lives OUTSIDE this repo — no personal account numbers are committed here.
+# See apply_account_config(). Unknown accounts fall back to the last 6 chars of
+# the account name (label) and '?' (grade), so MONARCH works with no config.
+ACCT_LABEL: dict = {}
+ACCT_GRADE: dict = {}
+
+
+def apply_account_config(local_cfg: dict):
+    """Merge account label/grade maps from config.json into the module maps.
+
+    config.json shape:
+      {
+        "accounts": {
+          "<ACCOUNT_ID>": { "label": "084", "grade": "G4" },
+          ...
+        }
+      }
+    Called once at startup after load_local_config().
+    """
+    accounts = local_cfg.get('accounts', {})
+    if not isinstance(accounts, dict):
+        return
+    for acct_id, info in accounts.items():
+        if not isinstance(info, dict):
+            continue
+        if info.get('label'):
+            ACCT_LABEL[str(acct_id)] = str(info['label'])
+        if info.get('grade'):
+            ACCT_GRADE[str(acct_id)] = str(info['grade'])
+
+# ── Trading-session boundary ──────────────────────────────────────────────────
+# Hour (0-23, in the chart's local time) at which a new trading session begins.
+# Default 18 (6 PM) is correct when NT8 charts render in ET. Override in
+# config.json ("session_boundary_hour") or with --session-hour if your charts
+# use a different timezone.
+SESSION_BOUNDARY_HOUR = 18
+
+
+def get_session_boundary_hour(local_cfg: dict) -> int:
+    """Resolve the session-start hour from local config.json, clamped to 0-23.
+    Falls back to SESSION_BOUNDARY_HOUR (18) if unset or invalid."""
+    try:
+        h = int(local_cfg.get('session_boundary_hour', SESSION_BOUNDARY_HOUR))
+        if 0 <= h <= 23:
+            return h
+    except (ValueError, TypeError):
+        pass
+    return SESSION_BOUNDARY_HOUR
 
 
 def get_account_label(account: str) -> str:
@@ -162,3 +208,25 @@ def load_local_config(monarch_dir: Path) -> dict:
 def save_local_config(monarch_dir: Path, cfg: dict):
     with open(monarch_dir / 'config.json', 'w', encoding='utf-8') as f:
         json.dump(cfg, f, indent=2)
+
+
+def ensure_local_config_template(monarch_dir: Path):
+    """Write a starter config.json into the MONARCH folder if none exists, so the
+    user has something to edit (account labels/grades, session hour). Never
+    overwrites an existing file. This file lives in NinjaTrader 8\\MONARCH\\ —
+    outside the source repo — so personal account numbers stay private.
+    """
+    cfg_file = monarch_dir / 'config.json'
+    if cfg_file.exists():
+        return
+    template = {
+        "session_boundary_hour": 18,
+        "accounts": {
+            "YOUR_ACCOUNT_ID_HERE": {"label": "L1", "grade": "G4"}
+        }
+    }
+    try:
+        with open(cfg_file, 'w', encoding='utf-8') as f:
+            json.dump(template, f, indent=2)
+    except Exception:
+        pass

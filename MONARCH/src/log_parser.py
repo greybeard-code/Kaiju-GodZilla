@@ -5,9 +5,13 @@ Parses GodZilla_*.csv trade files into normalised trade dicts and
 computes all statistics used by the report generators.
 
 CSV columns (as written by NinjaTrader):
-  OpenTime, Account, Instrument, OpenPrice, Qty, CloseTime,
-  Trigger, Direction, AtmStrategyName, RealizedPnL,
-  SignalCombo, UsedSignals, TradeResult, LastTradeLine
+  GodZillaKilla 1.9.2+ (current, 11 columns):
+    OpenTime, Account, Instrument, OpenPrice, Qty, CloseTime,
+    Trigger, Direction, AtmStrategyName, RealizedPnL, TradeResult
+  GodZillaKilla <=1.9.1 (legacy, 14 columns) also added:
+    SignalCombo, UsedSignals, LastTradeLine
+Parsed via csv.DictReader (by header name), so both layouts are supported.
+SignalCombo/UsedSignals fall back to Trigger when absent (they duplicated it).
 """
 
 import csv
@@ -53,8 +57,12 @@ def is_fast_trade(open_dt: datetime, close_dt: datetime) -> bool:
 
 
 def clean_combo(combo: str) -> str:
-    """Strip SET1-G?- prefix from signal combo."""
-    return re.sub(r'^SET1-G\d-?', '', combo)
+    """Strip the SET#-G# prefix from a signal combo / trigger.
+
+    Handles both the old SignalCombo form ("SET1-G3-KO+PA+SU") and the
+    Trigger form now used as the fallback ("SET1-G3:KO+PA+SU", incl. SET2).
+    """
+    return re.sub(r'^SET\d-G\d[-:]?', '', combo)
 
 
 # ── File scanning & parsing ───────────────────────────────────────────────────
@@ -68,82 +76,107 @@ def _account_from_filename(fpath: Path) -> str:
     return m.group(1) if m else ''
 
 
-def parse_all_trades(logs_dir: Path) -> List[dict]:
+def parse_all_trades(logs_dir: Path, boundary_hour: int = 18) -> List[dict]:
     """
     Parse every GodZilla_*.csv in logs_dir.
     Returns a list of trade dicts sorted by open_dt ascending.
-    All accounts (APEX, Sim, etc.) are included and treated equally.
+    All accounts (prop firm, Sim, etc.) are included and treated equally.
+
+    boundary_hour: hour (0-23, chart-local time) at which a new trading session
+    begins — passed through to trading_day_for. Default 18 (6 PM ET).
     """
     trades: List[dict] = []
     seen_keys: set = set()
 
     for fpath in sorted(logs_dir.glob('GodZilla_*.csv')):
-        _parse_file(fpath, trades, seen_keys)
+        _parse_file(fpath, trades, seen_keys, boundary_hour)
 
     trades.sort(key=lambda t: t['open_dt'])
     return trades
 
 
-def _parse_file(fpath: Path, trades: List[dict], seen_keys: set):
+def _parse_file(fpath: Path, trades: List[dict], seen_keys: set, boundary_hour: int = 18):
     filename_account = _account_from_filename(fpath)
     try:
         with open(fpath, encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                if not row.get('OpenTime'):
-                    continue
-
-                # Account: prefer CSV column; fall back to filename-derived value
-                acct = row.get('Account', '').strip().strip('"') or filename_account
-                if not acct:
-                    continue
-
+                # Per-row isolation: one malformed line is skipped, not fatal to the
+                # rest of the file.
                 try:
-                    open_dt  = datetime.strptime(row['OpenTime'].strip(),  '%Y-%m-%d %H:%M:%S')
-                    close_dt = datetime.strptime(row['CloseTime'].strip(), '%Y-%m-%d %H:%M:%S')
-                except ValueError:
-                    continue
-
-                trigger = row.get('Trigger', '').strip()
-                used    = row.get('UsedSignals', '').strip()
-                combo   = row.get('SignalCombo', '').strip()
-
-                # Dedup: same account + open time = same trade
-                key = (acct, open_dt)
-                if key in seen_keys:
-                    continue
-                seen_keys.add(key)
-
-                try:
-                    pnl = float(row['RealizedPnL'].strip())
-                except (ValueError, KeyError):
-                    pnl = 0.0
-
-                trades.append({
-                    'open_dt':     open_dt,
-                    'close_dt':    close_dt,
-                    'session':     trading_day_for(open_dt),
-                    'account':     acct,
-                    'instrument':  row.get('Instrument', '').strip(),
-                    'open_price':  _safe_float(row.get('OpenPrice')),
-                    'qty':         _safe_int(row.get('Qty')),
-                    'direction':   row.get('Direction', '').strip(),
-                    'atm':         row.get('AtmStrategyName', '').strip(),
-                    'pnl':         pnl,
-                    'result':      row.get('TradeResult', '').strip().upper(),
-                    'trigger':     trigger,
-                    'used':        used,
-                    'combo':       combo,
-                    'combo_clean': clean_combo(combo),
-                    'grade':       parse_grade(trigger, used),
-                    'has_ko':      has_ko(used),
-                    'duration':    parse_duration(open_dt, close_dt),
-                    'is_fast':     is_fast_trade(open_dt, close_dt),
-                    'is_live':     True,   # all accounts in GodZilla logs are active
-                    'source':      fpath.name,
-                })
+                    _parse_row(row, fpath, filename_account, trades, seen_keys, boundary_hour)
+                except Exception as e:
+                    print(f"  [warn] Skipped a bad row in {fpath.name}: {e}")
     except Exception as e:
         print(f"  [warn] Could not parse {fpath.name}: {e}")
+
+
+def _parse_row(row: dict, fpath: Path, filename_account: str,
+               trades: List[dict], seen_keys: set, boundary_hour: int):
+    """Parse a single CSV row and append a trade dict. Returns early (skips the
+    row) on any missing/invalid required field."""
+    if not row.get('OpenTime'):
+        return
+
+    # Account: prefer CSV column; fall back to filename-derived value
+    acct = row.get('Account', '').strip().strip('"') or filename_account
+    if not acct:
+        return
+
+    try:
+        open_dt  = datetime.strptime(row['OpenTime'].strip(),  '%Y-%m-%d %H:%M:%S')
+        close_dt = datetime.strptime(row['CloseTime'].strip(), '%Y-%m-%d %H:%M:%S')
+    except ValueError:
+        return
+
+    # GodZillaKilla 1.9.2+ dropped the SignalCombo/UsedSignals/LastTradeLine
+    # columns — they duplicated Trigger (e.g. "SET1-G3:KO+PA+SU"). Fall back
+    # to Trigger so KO detection and combo grouping keep working on new logs
+    # while older 14-column logs still use their dedicated columns.
+    trigger = row.get('Trigger', '').strip()
+    used    = row.get('UsedSignals', '').strip() or trigger
+    combo   = row.get('SignalCombo', '').strip() or trigger
+
+    # Dedup: same account + open time = same trade
+    key = (acct, open_dt)
+    if key in seen_keys:
+        return
+    seen_keys.add(key)
+
+    try:
+        pnl = float(row['RealizedPnL'].strip())
+    except (ValueError, KeyError):
+        pnl = 0.0
+
+    # TradeResult (WIN/LOSS/FLAT) is authoritative when present, but fall
+    # back to the sign of PnL if the column is missing or blank so win/loss
+    # stats stay correct across any log variant.
+    result = row.get('TradeResult', '').strip().upper()
+    if result not in ('WIN', 'LOSS', 'FLAT'):
+        result = 'WIN' if pnl > 0 else 'LOSS' if pnl < 0 else 'FLAT'
+
+    trades.append({
+        'open_dt':     open_dt,
+        'close_dt':    close_dt,
+        'session':     trading_day_for(open_dt, boundary_hour),
+        'account':     acct,
+        'instrument':  row.get('Instrument', '').strip(),
+        'open_price':  _safe_float(row.get('OpenPrice')),
+        'qty':         _safe_int(row.get('Qty')),
+        'direction':   row.get('Direction', '').strip(),
+        'atm':         row.get('AtmStrategyName', '').strip(),
+        'pnl':         pnl,
+        'result':      result,
+        'trigger':     trigger,
+        'used':        used,
+        'combo':       combo,
+        'combo_clean': clean_combo(combo),
+        'grade':       parse_grade(trigger, used),
+        'has_ko':      has_ko(used),
+        'duration':    parse_duration(open_dt, close_dt),
+        'is_fast':     is_fast_trade(open_dt, close_dt),
+        'source':      fpath.name,
+    })
 
 
 def _safe_float(v) -> float:

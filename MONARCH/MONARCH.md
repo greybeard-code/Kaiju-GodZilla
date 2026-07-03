@@ -179,7 +179,7 @@ already exist (for example, after fixing a bug or rolling the contract ticker).
 MONARCH automatically picks up **any** GodZilla log file (`GodZilla_*.csv`)
 found anywhere in your NinjaTrader 8 folder and moves it into `MONARCH\logs\`.
 The account name is read from the CSV data, with the filename used as a
-fallback. Both live APEX accounts and Sim accounts are included in reports.
+fallback. Both live prop firm accounts and Sim accounts are included in reports.
 
 Log files are **moved** out of NinjaTrader 8 on each run — they are not
 duplicated. If a file with the same name already exists in `logs\`, it is

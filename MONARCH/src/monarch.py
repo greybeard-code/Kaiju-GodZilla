@@ -34,7 +34,12 @@ else:
 if str(_src) not in sys.path:
     sys.path.insert(0, str(_src))
 
-from config import APP_NAME, VERSION, AUTHOR, EMAIL, WEBSITE, find_nt8_folder, init_monarch_dirs
+from config import (
+    APP_NAME, VERSION, AUTHOR, EMAIL, WEBSITE,
+    find_nt8_folder, init_monarch_dirs,
+    load_local_config, ensure_local_config_template,
+    apply_account_config, get_session_boundary_hour,
+)
 from log_sync import sync_logs
 from log_parser import (
     parse_all_trades, group_by_session,
@@ -75,6 +80,9 @@ def parse_args():
                    help='Path to NinjaTrader 8 Documents folder')
     p.add_argument('--dry-run',  action='store_true',
                    help='Show what would be generated without writing files')
+    p.add_argument('--session-hour', type=int, metavar='0-23', default=None,
+                   help='Hour a new trading session starts, in your chart timezone '
+                        '(default 18 = 6 PM ET). Overrides config.json for this run.')
     p.add_argument('-d', '--daemon', action='store_true',
                    help='Daemon mode: no pause at exit (use for Task Scheduler)')
     p.add_argument('--version',  action='store_true',
@@ -110,6 +118,23 @@ def main():
     monarch_dir, logs_dir, reports_dir = init_monarch_dirs(nt8)
     print(f"  MONARCH    : {monarch_dir}")
 
+    # Local per-installation config lives in NT8\MONARCH\config.json — OUTSIDE
+    # the source repo — so account numbers and other personal settings stay
+    # private. Create a starter template on first run (skipped on --dry-run).
+    if not args.dry_run:
+        ensure_local_config_template(monarch_dir)
+    local_cfg = load_local_config(monarch_dir)
+    apply_account_config(local_cfg)   # populate account label/grade maps
+
+    # Session-boundary hour: --session-hour overrides config.json overrides default 18.
+    if args.session_hour is not None and not (0 <= args.session_hour <= 23):
+        print(f"[ERROR] --session-hour must be 0-23 (got {args.session_hour}).")
+        sys.exit(1)
+    boundary_hour = args.session_hour if args.session_hour is not None \
+        else get_session_boundary_hour(local_cfg)
+    if boundary_hour != 18:
+        print(f"  Session start hour : {boundary_hour}:00 (chart-local)")
+
     # ── 3. Sync log files ──────────────────────────────────────────────────────
     print("\n[SYNC] Moving GodZilla log files...")
     if not args.dry_run:
@@ -120,7 +145,7 @@ def main():
 
     # ── 4. Parse all trades ────────────────────────────────────────────────────
     print("\n[PARSE] Reading log files...")
-    all_trades = parse_all_trades(logs_dir)
+    all_trades = parse_all_trades(logs_dir, boundary_hour)
     accounts   = sorted({t['account'] for t in all_trades})
     print(f"  Total: {len(all_trades)} trades  |  Accounts: {len(accounts)}")
 
@@ -190,7 +215,12 @@ def main():
                 print(f"  (dry-run) Would generate daily_{d.strftime('%Y%m%d')}.html"
                       f"  – {'has data' if has_data else 'no trades'}")
             else:
-                generate_daily(d, all_trades, index, reports_dir)
+                # Isolate each report: one bad day must not abort the whole run
+                # (remaining reports, the hub, and index save still proceed).
+                try:
+                    generate_daily(d, all_trades, index, reports_dir)
+                except Exception as e:
+                    print(f"  [warn] Failed to generate daily_{d.strftime('%Y%m%d')}.html: {e}")
 
     # ── 9. Generate weekly reports ─────────────────────────────────────────────
     if weekly_to_generate:
@@ -199,12 +229,20 @@ def main():
             if args.dry_run:
                 print(f"  (dry-run) Would generate weekly_{friday.strftime('%Y%m%d')}.html")
             else:
-                generate_weekly(friday, all_trades, index, reports_dir)
+                try:
+                    generate_weekly(friday, all_trades, index, reports_dir)
+                except Exception as e:
+                    print(f"  [warn] Failed to generate weekly_{friday.strftime('%Y%m%d')}.html: {e}")
 
     # ── 10. Regenerate hub ─────────────────────────────────────────────────────
     print("\n[HUB] Updating Castle Bravo...")
     if not args.dry_run:
-        generate_hub(all_trades, index, monarch_dir, reports_dir)
+        # Isolate the hub so a hub failure still lets the index (with updated
+        # cumulative stats) be saved.
+        try:
+            generate_hub(all_trades, index, monarch_dir, reports_dir)
+        except Exception as e:
+            print(f"  [warn] Failed to generate the hub: {e}")
         save_index(index, reports_dir)
 
     # ── Done ───────────────────────────────────────────────────────────────────

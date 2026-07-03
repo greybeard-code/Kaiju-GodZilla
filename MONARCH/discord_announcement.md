@@ -20,7 +20,7 @@ If you've been running GodZilla or GodZuki, you now have a dedicated report gene
 - Generates a **daily report** for every session — P&L, win rate, profit factor, signal combo breakdown, per-account stats, and a full trade log
 - Generates a **weekly summary** every Friday automatically
 - Builds **Castle Bravo** — a command-centre hub page with a 4-week calendar, cumulative all-time stats, and per-account totals
-- Handles multiple accounts (APEX live and Sim copy-trade leaders) side by side
+- Handles multiple accounts (prop firm live and Sim copy-trade leaders) side by side
 - Runs as a single `.exe` — no Python, no installs, nothing else required
 
 ---
