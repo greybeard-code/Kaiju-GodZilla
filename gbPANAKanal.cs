@@ -381,7 +381,7 @@ public class gbPANAKanal : Indicator
 	public string Author  => "GreyBeard";
 
 	[Display(Name = "Version",  Order = 1,  GroupName = "Developer")]
-	public string Version => "1.1.1 Beta";
+	public string Version => "1.1.1";
 
 	[Display(Name = "Website", Order = 5, GroupName = "Developer")]
 	public string Website => "https://greybeardconsulting.net/";

@@ -230,7 +230,7 @@ public class gbBarStatus : Indicator
 	public string Website => "https://greybeardconsulting.net/";
 
 	[Display(Name = "Version", Order = 10, GroupName = "Developer")]
-	public string Version => "1.1.1 Beta";
+	public string Version => "1.1.1";
 
 	[Display(Name = "Count Mode", Order = 0, GroupName = "General")]
 	public gbBarStatus_CountMode CountMode { get; set; }

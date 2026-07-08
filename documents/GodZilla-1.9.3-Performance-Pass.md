@@ -1,4 +1,4 @@
-# GodZilla Suite — Performance Pass (GodZillaKilla 1.9.3 Beta)
+# GodZilla Suite — Performance Pass (GodZillaKilla 1.9.3)
 
 **Scope:** GodZillaKilla strategy + five indicators (gbKingOrderBlock, gbPANAKanal, gbBarStatus, gbSuperJumpBoost, NewsSignals).
 **Goal:** reduce per-tick latency on the data thread, per-frame cost on the render thread, and unbounded memory growth over long sessions.
@@ -80,7 +80,7 @@ gbThunderZilla, gbSumoPullback, and gbNobleCloud reviewed clean — per-bar stat
 
 ## Verification notes for testers
 
-- HUD should show **v1.9.3 Beta**.
+- HUD should show **v1.9.3**.
 - Signals, entries, arrows, back-brushes, zones, and lines should be pixel/tick-identical to 1.9.2.
 - Only expected difference: KO inactive zones older than ~2×OrderBlockAge bars are no longer drawn when scrolling far back.
 - Watch for: memory staying flat over a multi-hour session (previously the KO inactive lists and per-frame DX allocations crept), and lower CPU during fast markets on charts with KO + PANA loaded.

@@ -776,7 +776,7 @@ public class gbKingOrderBlock : Indicator
 	public string Website => "https://greybeardconsulting.net/";
 
 	[Display(Name = "Version",   Order = 10,  GroupName = "Developer")]
-	public string Version => "1.1.1 Beta";
+	public string Version => "1.1.1";
 
 	[Display(Name = "Screen DPI", Order = 100, GroupName = "General")]
 	[Range(99, 500)]

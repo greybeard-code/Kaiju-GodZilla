@@ -87,7 +87,7 @@ namespace NinjaTrader.NinjaScript.Indicators.GreyBeard
 		// Thanks DD!
 
 		[Display(Name = "Version", Order = 0, GroupName = "Developer")]
-		public string Version => "1.1.1 Beta";
+		public string Version => "1.1.1";
 
 		[Display(Name = "Author", Order = 0, GroupName = "Developer")]
 		public string Author => "GreyBeard";

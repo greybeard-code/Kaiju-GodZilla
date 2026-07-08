@@ -1102,7 +1102,7 @@ namespace NinjaTrader.NinjaScript.Indicators.Playr101
         // Developer
         // ─────────────────────────────────────────────────────────────
         [Display (Name = "Version", Order = 0, GroupName = "Developer")]
-        public string Version => "1.1.1 Beta";
+        public string Version => "1.1.1";
 
         [Display (Name = "Author", Order = 1, GroupName = "Developer")]
         public string Author => "Playr101";

@@ -41,3 +41,6 @@ desktop.ini
 # ── NT8 compile error logs ────────────────────────────────────────────────────
 Error*.csv
 Errors.csv
+
+# ── Claude Code local state (settings, worktrees) — not project source ────────
+.claude/

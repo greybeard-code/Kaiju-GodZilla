@@ -56,6 +56,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
     [CategoryOrder ("ATM Marker Display", 15)]
     [CategoryOrder ("Audio Alerts", 16)]
     [CategoryOrder ("Logging", 17)]
+    [CategoryOrder ("Performance / Historical", 18)]
     #endregion
 
     public class GodZillaKilla : Strategy, ICustomTypeDescriptor
@@ -107,6 +108,17 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             LessOrEqual,
             LessThan,
             NotEqual
+        }
+
+        // Startup-performance choice. FullHistoricalProcessing preserves the legacy
+        // behavior needed for FixedTicks historical testing and historical drawings.
+        // SignalWarmUpOnly lets child indicators warm up through history while GodZilla
+        // skips historical management, execution, historical tick-series work, alerts,
+        // and strategy-owned historical drawings.
+        public enum HistoricalProcessingMode
+        {
+            FullHistoricalProcessing,
+            SignalWarmUpOnly
         }
 
         #region Variables
@@ -507,7 +519,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 Description = "GodZillaKilla — strategy using direct KingOrderBlock/PANAKanal/ThunderZilla/SuperJumpBoost/SumoPullback/NobleCloud child indicator signals.";
                 Name = "GodZillaKilla";
                 StrategyName = Name;
-                _strategyVersion = "1.9.3 Beta";
+                _strategyVersion = "1.9.4";
 
                 Author = "Playr101";
                 Credits = "GreyBeard, ninZa.co, RenkoKings, ES, rbro999";
@@ -860,8 +872,20 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 SUSignalArrowBrush = Brushes.Magenta;
                 NCSignalArrowBrush = Brushes.Cyan;
 
-                // Optional visual-only bar status indicator.
-                ShowBarStatusIndicator = true;
+                // Optional visual-only bar status indicator. Default off for new
+                // instances — it is a per-chart convenience, not needed for trading.
+                ShowBarStatusIndicator = false;
+
+                // Performance / Historical — defaults preserve legacy behavior.
+                // Switch HistoricalMode to SignalWarmUpOnly on live/Sim ATM instances
+                // for lighter multi-instance startup (see README).
+                HistoricalMode = HistoricalProcessingMode.FullHistoricalProcessing;
+                ProcessHistoricalTickSeries = true;
+                DrawHistoricalSignalArrows = true;
+                DrawHistoricalBackgroundColors = true;
+                DrawHistoricalTradeMarkers = true;
+                DrawHistoricalAtmEntryExitMarkers = true;
+                LoadOnlyRequiredSignalEngines = true;
 
                 // Trade Markers - ATM mode only
                 ShowEntryExitMarkers = true;
@@ -894,97 +918,115 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
                 // Build the five child indicators directly
                 // and mirrors the gbGodZillaSignals input model.
-                _king = gbKingOrderBlock (
-                    King_SwingPointNeighborhood,
-                    King_ImbalanceQualifying,
-                    King_OrderBlockFindingBosChochPeriod,
-                    King_OrderBlockAge,
-                    King_OrderBlocksSameDirectionOffset,
-                    King_OrderBlocksDifferenceDirectionOffset,
-                    King_SignalTradeQuantityPerOrderBlock,
-                    King_SignalTradeSplitBars);
-                if (UseKOSignals && ShowKOIndicator)
-                    AddChartIndicator (_king);
-                _king.Name = "";
+                if (RequiresKingOrderBlock ())
+                {
+                    _king = gbKingOrderBlock (
+                        King_SwingPointNeighborhood,
+                        King_ImbalanceQualifying,
+                        King_OrderBlockFindingBosChochPeriod,
+                        King_OrderBlockAge,
+                        King_OrderBlocksSameDirectionOffset,
+                        King_OrderBlocksDifferenceDirectionOffset,
+                        King_SignalTradeQuantityPerOrderBlock,
+                        King_SignalTradeSplitBars);
+                    if (UseKOSignals && ShowKOIndicator)
+                        AddChartIndicator (_king);
+                    _king.Name = "";
+                }
 
-                _pana = gbPANAKanal (
-                    Pana_Period,
-                    Pana_Factor,
-                    Pana_MiddlePeriod,
-                    Pana_SignalBreakSplit,
-                    Pana_SignalPullbackFindingPeriod);
-                if (UsePASignals && ShowPAIndicator)
-                    AddChartIndicator (_pana);
-                _pana.Name = "";
+                if (RequiresPANAKanal ())
+                {
+                    _pana = gbPANAKanal (
+                        Pana_Period,
+                        Pana_Factor,
+                        Pana_MiddlePeriod,
+                        Pana_SignalBreakSplit,
+                        Pana_SignalPullbackFindingPeriod);
+                    if (UsePASignals && ShowPAIndicator)
+                        AddChartIndicator (_pana);
+                    _pana.Name = "";
+                }
 
-                _thunder = gbThunderZilla (
-                    Thunder_TrendMAType,
-                    Thunder_TrendPeriod,
-                    Thunder_TrendSmoothingEnabled,
-                    Thunder_TrendSmoothingMethod,
-                    Thunder_TrendSmoothingPeriod,
-                    Thunder_StopOffsetMultiplierStop,
-                    Thunder_SignalQuantityPerFlat,
-                    Thunder_SignalQuantityPerTrend);
-                if (UseTHSignals && ShowTHIndicator)
-                    AddChartIndicator (_thunder);
-                _thunder.Name = "";
+                if (RequiresThunderZilla ())
+                {
+                    _thunder = gbThunderZilla (
+                        Thunder_TrendMAType,
+                        Thunder_TrendPeriod,
+                        Thunder_TrendSmoothingEnabled,
+                        Thunder_TrendSmoothingMethod,
+                        Thunder_TrendSmoothingPeriod,
+                        Thunder_StopOffsetMultiplierStop,
+                        Thunder_SignalQuantityPerFlat,
+                        Thunder_SignalQuantityPerTrend);
+                    if (UseTHSignals && ShowTHIndicator)
+                        AddChartIndicator (_thunder);
+                    _thunder.Name = "";
+                }
 
-                _sumo = gbSumoPullback (
-                    SU_SlowMAType,
-                    SU_SlowMAPeriod,
-                    SU_SlowMASmoothingEnabled,
-                    SU_SlowMASmoothingMethod,
-                    SU_SlowMASmoothingPeriod,
-                    SU_FastMA1Type,
-                    SU_FastMA1Period,
-                    SU_FastMA1SmoothingEnabled,
-                    SU_FastMA1SmoothingMethod,
-                    SU_FastMA1SmoothingPeriod,
-                    SU_FastMA2Type,
-                    SU_FastMA2Period,
-                    SU_FastMA2SmoothingEnabled,
-                    SU_FastMA2SmoothingMethod,
-                    SU_FastMA2SmoothingPeriod,
-                    SU_FastMA3Type,
-                    SU_FastMA3Period,
-                    SU_FastMA3SmoothingEnabled,
-                    SU_FastMA3SmoothingMethod,
-                    SU_FastMA3SmoothingPeriod,
-                    SU_SignalSplitFirst,
-                    SU_SignalSplitSecond);
-                if (UseSUSignals && ShowSUIndicator)
-                    AddChartIndicator (_sumo);
-                _sumo.Name = "";
+                if (RequiresSumoPullback ())
+                {
+                    _sumo = gbSumoPullback (
+                        SU_SlowMAType,
+                        SU_SlowMAPeriod,
+                        SU_SlowMASmoothingEnabled,
+                        SU_SlowMASmoothingMethod,
+                        SU_SlowMASmoothingPeriod,
+                        SU_FastMA1Type,
+                        SU_FastMA1Period,
+                        SU_FastMA1SmoothingEnabled,
+                        SU_FastMA1SmoothingMethod,
+                        SU_FastMA1SmoothingPeriod,
+                        SU_FastMA2Type,
+                        SU_FastMA2Period,
+                        SU_FastMA2SmoothingEnabled,
+                        SU_FastMA2SmoothingMethod,
+                        SU_FastMA2SmoothingPeriod,
+                        SU_FastMA3Type,
+                        SU_FastMA3Period,
+                        SU_FastMA3SmoothingEnabled,
+                        SU_FastMA3SmoothingMethod,
+                        SU_FastMA3SmoothingPeriod,
+                        SU_SignalSplitFirst,
+                        SU_SignalSplitSecond);
+                    if (UseSUSignals && ShowSUIndicator)
+                        AddChartIndicator (_sumo);
+                    _sumo.Name = "";
+                }
 
-                _nc = gbNobleCloud (
-                    NC_Sensitivity, NC_Smoothness,
-                    NC_BaselineMAType, NC_BaselinePeriod,
-                    NC_BaselineSmoothingEnabled, NC_BaselineSmoothingMethod, NC_BaselineSmoothingPeriod,
-                    NC_KernelMAType, NC_KernelPeriod,
-                    NC_KernelSmoothingEnabled, NC_KernelSmoothingMethod, NC_KernelSmoothingPeriod,
-                    NC_SignalSplit,
-                    NC_FilterEnabled, NC_FilterBarMin, NC_FilterBarMax);
-                if (UseNCSignals && ShowNCIndicator)
-                    AddChartIndicator (_nc);
-                _nc.Name = "";
+                if (RequiresNobleCloud ())
+                {
+                    _nc = gbNobleCloud (
+                        NC_Sensitivity, NC_Smoothness,
+                        NC_BaselineMAType, NC_BaselinePeriod,
+                        NC_BaselineSmoothingEnabled, NC_BaselineSmoothingMethod, NC_BaselineSmoothingPeriod,
+                        NC_KernelMAType, NC_KernelPeriod,
+                        NC_KernelSmoothingEnabled, NC_KernelSmoothingMethod, NC_KernelSmoothingPeriod,
+                        NC_SignalSplit,
+                        NC_FilterEnabled, NC_FilterBarMin, NC_FilterBarMax);
+                    if (UseNCSignals && ShowNCIndicator)
+                        AddChartIndicator (_nc);
+                    _nc.Name = "";
+                }
 
-                _sjb = gbSuperJumpBoost (
-                    SJ_SensitiveModeEnabled,
-                    SJ_OffsetLevel1,
-                    SJ_OffsetLevel2,
-                    SJ_OffsetLevel3,
-                    SJ_OffsetLevel4,
-                    SJ_OffsetBase,
-                    SJ_ReferencePricePeriod,
-                    SJ_LineLevelsOffset,
-                    SJ_ExtremeNeighborhood,
-                    SJ_SignalCloseThreshold,
-                    SJ_SignalQuantityPerZone,
-                    SJ_SignalSplit);
-                if (UseSJSignals && ShowSJIndicator)
-                    AddChartIndicator (_sjb);
-                _sjb.Name = "";
+                if (RequiresSuperJumpBoost ())
+                {
+                    _sjb = gbSuperJumpBoost (
+                        SJ_SensitiveModeEnabled,
+                        SJ_OffsetLevel1,
+                        SJ_OffsetLevel2,
+                        SJ_OffsetLevel3,
+                        SJ_OffsetLevel4,
+                        SJ_OffsetBase,
+                        SJ_ReferencePricePeriod,
+                        SJ_LineLevelsOffset,
+                        SJ_ExtremeNeighborhood,
+                        SJ_SignalCloseThreshold,
+                        SJ_SignalQuantityPerZone,
+                        SJ_SignalSplit);
+                    if (UseSJSignals && ShowSJIndicator)
+                        AddChartIndicator (_sjb);
+                    _sjb.Name = "";
+                }
 
                 if (ShowBarStatusIndicator)
                 {
@@ -1278,12 +1320,15 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         protected override void OnBarUpdate ()
         {
             // 1. Indicator Initialization Check
-            if (_king == null || _pana == null || _thunder == null || _sjb == null || _sumo == null || _nc == null)
+            // Only a REQUIRED engine being null is a failure — engines intentionally
+            // skipped by LoadOnlyRequiredSignalEngines are allowed to be null and read
+            // as 0 through the null-safe SafeSignalRead.
+            if (!AreRequiredChildIndicatorsReady ())
             {
                 if (!_indicatorNullWarned && State == State.Realtime)
                 {
                     _indicatorNullWarned = true;
-                    Print ($"[{Name}] INDICATOR NULL | One or more child indicators failed to load. KO={_king != null} PA={_pana != null} TH={_thunder != null} SJ={_sjb != null} SU={_sumo != null} NC={_nc != null}");
+                    Print ($"[{Name}] INDICATOR NULL | One or more required child indicators failed to load. KO={_king != null} PA={_pana != null} TH={_thunder != null} SJ={_sjb != null} SU={_sumo != null} NC={_nc != null}");
                 }
                 return;
             }
@@ -1292,6 +1337,13 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             if (BarsInProgress == 1)
             {
                 if (CurrentBars == null || CurrentBars.Length < 2 || CurrentBars[1] < 1)
+                    return;
+
+                // Historical 1-tick callbacks are the largest CPU multiplier when several
+                // strategy instances load at once. SignalWarmUpOnly always skips GodZilla's
+                // work on those callbacks; ProcessHistoricalTickSeries gives Full-mode users
+                // the same shortcut. NinjaTrader still loads the added 1-tick series either way.
+                if (State == State.Historical && !ShouldProcessHistoricalTickSeries ())
                     return;
 
                 // Fresh-start mode: ignore historical ticks if enabled
@@ -1329,7 +1381,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             // We run these before the master gate so arrows still draw even when disarmed
             UpdateNormalizedSignalSeriesAndDrawSignalArrows ();
 
-            if (OrderMode == OrderManagementMode.AtmStrategy)
+            if (OrderMode == OrderManagementMode.AtmStrategy && ShouldProcessHistoricalAtmMarkers ())
             {
                 CheckMarkerPositionChange ();
                 RedrawCompletedMarkers ();
@@ -1338,8 +1390,13 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             // 5. Management & Filter Checks
             // Gate A: skip historical management calls for ATM mode (ATM is realtime-only)
             // and for FixedTicks fresh-start (no historical replay wanted). FixedTicks
-            // non-fresh-start mode still needs these to run during backtest.
-            if (State == State.Historical && (StartFreshOnEnable || OrderMode != OrderManagementMode.FixedTicks))
+            // non-fresh-start mode still needs these to run during backtest — UNLESS
+            // SignalWarmUpOnly, which skips all historical management for every mode
+            // (child engines are already warm; no historical trades/alerts wanted).
+            if (State == State.Historical
+                && (HistoricalMode == HistoricalProcessingMode.SignalWarmUpOnly
+                    || StartFreshOnEnable
+                    || OrderMode != OrderManagementMode.FixedTicks))
                 return;
 
             int currentTime = ToTime(Time[0]);
@@ -2462,6 +2519,117 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             }
         }
 
+        #region Performance / Historical Helpers
+        // These checks only affect startup work — they never share positions, PnL,
+        // ATM IDs, or risk state across strategy instances. In SignalWarmUpOnly the
+        // child indicators still warm up through history; only GodZilla's own
+        // historical management, execution, tick-series work, and drawings are skipped.
+        // Every Should*/Requires* returns the permissive value when State != Historical,
+        // so live (Realtime) behavior is never gated.
+        private bool ShouldProcessHistoricalTickSeries ()
+        {
+            if (State != State.Historical)
+                return true;
+
+            return HistoricalMode == HistoricalProcessingMode.FullHistoricalProcessing
+                && ProcessHistoricalTickSeries;
+        }
+
+        private bool IsFullHistoricalVisualMode ()
+        {
+            return State != State.Historical
+                || HistoricalMode == HistoricalProcessingMode.FullHistoricalProcessing;
+        }
+
+        private bool ShouldDrawHistoricalSignalArrows ()
+        {
+            return State != State.Historical
+                || (IsFullHistoricalVisualMode () && DrawHistoricalSignalArrows);
+        }
+
+        private bool ShouldDrawHistoricalBackgroundColors ()
+        {
+            return State != State.Historical
+                || (IsFullHistoricalVisualMode () && DrawHistoricalBackgroundColors);
+        }
+
+        private bool ShouldDrawHistoricalTradeMarkers ()
+        {
+            return State != State.Historical
+                || (IsFullHistoricalVisualMode () && DrawHistoricalTradeMarkers);
+        }
+
+        private bool ShouldProcessHistoricalAtmMarkers ()
+        {
+            return State != State.Historical
+                || (IsFullHistoricalVisualMode () && DrawHistoricalAtmEntryExitMarkers);
+        }
+
+        // A child indicator is "required" (must be instantiated) when it is used by
+        // Set 1, an enabled Set 2, or a chart display toggle — or when the
+        // Load-Only-Required optimization is off (legacy: always load all six).
+        private bool RequiresKingOrderBlock ()
+        {
+            return !LoadOnlyRequiredSignalEngines
+                || UseKOSignals
+                || (EnableGroupTriggerSet2 && G2_UseKOSignals)
+                || ShowKOIndicator;
+        }
+
+        private bool RequiresPANAKanal ()
+        {
+            return !LoadOnlyRequiredSignalEngines
+                || UsePASignals
+                || (EnableGroupTriggerSet2 && G2_UsePASignals)
+                || ShowPAIndicator;
+        }
+
+        private bool RequiresThunderZilla ()
+        {
+            return !LoadOnlyRequiredSignalEngines
+                || UseTHSignals
+                || (EnableGroupTriggerSet2 && G2_UseTHSignals)
+                || ShowTHIndicator;
+        }
+
+        private bool RequiresSuperJumpBoost ()
+        {
+            return !LoadOnlyRequiredSignalEngines
+                || UseSJSignals
+                || (EnableGroupTriggerSet2 && G2_UseSJSignals)
+                || ShowSJIndicator;
+        }
+
+        private bool RequiresSumoPullback ()
+        {
+            return !LoadOnlyRequiredSignalEngines
+                || UseSUSignals
+                || (EnableGroupTriggerSet2 && G2_UseSUSignals)
+                || ShowSUIndicator;
+        }
+
+        private bool RequiresNobleCloud ()
+        {
+            return !LoadOnlyRequiredSignalEngines
+                || UseNCSignals
+                || (EnableGroupTriggerSet2 && G2_UseNCSignals)
+                || ShowNCIndicator;
+        }
+
+        // OnBarUpdate's initialization guard: only a REQUIRED engine being null is a
+        // failure. Engines intentionally skipped by LoadOnlyRequiredSignalEngines are
+        // allowed to be null; their signals read as 0 via the null-safe SafeSignalRead.
+        private bool AreRequiredChildIndicatorsReady ()
+        {
+            return (!RequiresKingOrderBlock () || _king != null)
+                && (!RequiresPANAKanal () || _pana != null)
+                && (!RequiresThunderZilla () || _thunder != null)
+                && (!RequiresSuperJumpBoost () || _sjb != null)
+                && (!RequiresSumoPullback () || _sumo != null)
+                && (!RequiresNobleCloud () || _nc != null);
+        }
+        #endregion
+
         // ============================================================
         //  HUD — SharpDX boxed dashboard (AlightenLite-style)
         //
@@ -3541,6 +3709,9 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
         private void DrawSignalArrow (string tagPrefix, double signal, bool draw, Brush brush, int extraOffsetTicks, bool showLabel, string labelText)
         {
+            if (!ShouldDrawHistoricalSignalArrows ())
+                return;
+
             if (!draw || signal == 0 || brush == null)
                 return;
 
@@ -3600,6 +3771,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
         private void DrawTradeMarker (int direction)
         {
+            if (!ShouldDrawHistoricalTradeMarkers ()) return;
             if (!ShowTradeMarker || direction == 0) return;
             if (CurrentBar < 0 || TickSize <= 0) return;
             if (double.IsNaN (High[0]) || double.IsNaN (Low[0])) return;
@@ -3647,6 +3819,9 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
         private void SetSignalBackBrush (int groupSignal)
         {
+            if (!ShouldDrawHistoricalBackgroundColors ())
+                return;
+
             if (BarsInProgress != 0 || CurrentBar < 0)
                 return;
 
@@ -11161,6 +11336,56 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         [NinjaScriptProperty]
         [Display (Name = "Enable Debug", Order = 1, GroupName = "Logging", Description = "Print diagnostic messages to the NinjaTrader output window.")]
         public bool EnableDebug
+        {
+            get; set;
+        }
+
+        // -------------------- Performance / Historical --------------------
+        [NinjaScriptProperty]
+        [Display (Name = "Historical Processing Mode", Order = 0, GroupName = "Performance / Historical", Description = "FullHistoricalProcessing preserves legacy historical/FixedTicks behavior and historical drawings. SignalWarmUpOnly warms up the child indicators through history but skips GodZilla's historical management, execution, tick-series work, alerts, and strategy drawings — lighter startup for live/Sim ATM instances.")]
+        public HistoricalProcessingMode HistoricalMode
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Process Historical 1-Tick Series", Order = 10, GroupName = "Performance / Historical", Description = "When on (and mode is FullHistoricalProcessing), GodZilla runs its work on historical 1-tick callbacks. SignalWarmUpOnly always skips them. Note: NinjaTrader still loads the 1-tick history either way.")]
+        public bool ProcessHistoricalTickSeries
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Draw Historical Signal Arrows", Order = 20, GroupName = "Performance / Historical", Description = "Draw signal arrows on historical bars. Only applies in FullHistoricalProcessing.")]
+        public bool DrawHistoricalSignalArrows
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Draw Historical Background Colors", Order = 21, GroupName = "Performance / Historical", Description = "Paint group-trigger background colors on historical bars. Only applies in FullHistoricalProcessing.")]
+        public bool DrawHistoricalBackgroundColors
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Draw Historical T Markers", Order = 22, GroupName = "Performance / Historical", Description = "Draw the T trade markers on historical bars. Only applies in FullHistoricalProcessing.")]
+        public bool DrawHistoricalTradeMarkers
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Draw Historical ATM Entry/Exit Markers", Order = 23, GroupName = "Performance / Historical", Description = "Draw ATM entry/exit markers on historical bars. Only applies in FullHistoricalProcessing.")]
+        public bool DrawHistoricalAtmEntryExitMarkers
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Load Only Required Signal Engines", Order = 30, GroupName = "Performance / Historical", Description = "Skip instantiating child indicators whose signals are not used by Set 1, an enabled Set 2, or a chart display toggle. Reduces startup work when you use a subset of signals.")]
+        public bool LoadOnlyRequiredSignalEngines
         {
             get; set;
         }
