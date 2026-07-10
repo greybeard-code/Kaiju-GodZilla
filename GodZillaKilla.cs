@@ -164,6 +164,18 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         private double lastFixedExitCandidatePrice = 0.0;
         private DateTime lastFixedExitCandidateTime = Core.Globals.MinDate;
 
+        // Manual trade-management buttons (MOVE SL TO BE / SL▲▼ / TP▲▼).
+        // Threading contract: WPF click handlers ONLY write these; the data thread
+        // drains them once per tick in ProcessManualTradeCommands() and does all the
+        // order work. Never call SetStopLoss/AtmStrategyChangeStopTarget from the UI thread.
+        private int  _pendingSlNudgeTicks = 0;       // Interlocked.Add from clicks; Exchange(…,0) in drain
+        private int  _pendingTpNudgeTicks = 0;
+        private volatile bool _pendingMoveSlToBe = false;
+        private bool   manualStopTakeover    = false; // once true, auto-BE stops managing the stop this trade
+        private double manualLastStopPrice   = 0.0;   // FixedTicks nudge base (ATM reads live orders instead)
+        private double manualLastTargetPrice = 0.0;
+        private volatile bool _manualButtonsActive = false; // data thread computes; UI reads for IsEnabled
+
         // FlattenEverything reentrancy guard. Prevents two concurrent triggers (e.g.
         // session-end + daily-limit fired on the same bar) from both running the full
         // close sequence and producing duplicate AtmStrategyClose / ExitLong calls.
@@ -467,6 +479,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         // Button Panel
         private Border  _controlPanel;
         private Button  _armLongBtn, _armShortBtn, _revBtn, _autoArmBtn, _closeBtn;
+        private Button  _moveSlBeBtn, _slDownBtn, _slUpBtn, _tpDownBtn, _tpUpBtn;
         private Label   _statusLabel;
         private Label   _panelAccountLabel;
         private bool    _uiInitialized = false;
@@ -519,7 +532,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 Description = "GodZillaKilla — strategy using direct KingOrderBlock/PANAKanal/ThunderZilla/SuperJumpBoost/SumoPullback/NobleCloud child indicator signals.";
                 Name = "GodZillaKilla";
                 StrategyName = Name;
-                _strategyVersion = "1.9.4";
+                _strategyVersion = "1.10.0";
 
                 Author = "Playr101";
                 Credits = "GreyBeard, ninZa.co, RenkoKings, ES, rbro999";
@@ -576,6 +589,9 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 ControlPanelLeft = 10.0;
                 ControlPanelTop  = 50.0;
                 ControlPanelSize = GodZillaControlPanelSize.Large;
+                ShowManualTradeButtons = true;
+                ManualNudgeTicks = 4;
+                ManualBeOffsetTicks = 0;
 
                 ShowIndividualSignalStats = false;     // Default to Hidden
                 ShowGroupSignalTrackingStats = true;
@@ -1351,6 +1367,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     return;
 
                 UpdateDailyPnlOnTickSeries ();
+                ProcessManualTradeCommands ();   // before ManageFixedBreakeven so the takeover latch applies this tick
                 ManageFixedBreakeven ();
                 SanityCheckFixedTicksState ();
                 ProcessPendingSessionPnlPrint ();
@@ -2510,6 +2527,12 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 lastNakedCheckUtc = nowUtc;
                 CheckForNakedPositions (tickTime);
             }
+
+            // Manual trade buttons are live only while a position is open. In ATM mode
+            // the strategy's own Position stays Flat, so track the ATM trade instead.
+            _manualButtonsActive = OrderMode == OrderManagementMode.AtmStrategy
+                ? _openAtmTrade != null
+                : Position.MarketPosition != MarketPosition.Flat;
 
             if ((nowUtc - _lastTickUiSyncUtc).TotalMilliseconds >= TICK_UI_SYNC_INTERVAL_MS)
             {
@@ -5406,6 +5429,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             fixedPositionConfirmed = false;
             fixedTradeCloseProcessed = false;
             fixedBreakevenMoved = false;
+            ResetManualTradeCommandState ();   // fresh trade — clear manual latch / tracked prices
 
             SetActiveTradeSignalSources (useKO, usePA, useTH, useSJ, useSU, useNC, fixedEntryDirection, groupSize, groupName);
 
@@ -5452,6 +5476,8 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
             lastFixedExitCandidatePrice = 0.0;
             lastFixedExitCandidateTime = Core.Globals.MinDate;
+
+            ResetManualTradeCommandState ();
         }
 
         private double GetFixedBreakevenCurrentPrice ()
@@ -5476,6 +5502,11 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         private void ManageFixedBreakeven ()
         {
             if (OrderMode != OrderManagementMode.FixedTicks)
+                return;
+
+            // Manual takes over: once the user has moved the stop via a button, auto-BE
+            // stops managing it for the remainder of this trade (latch cleared on entry).
+            if (manualStopTakeover)
                 return;
 
             if (!EnableFixedBreakeven)
@@ -5542,6 +5573,393 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             if (EnableDebug)
                 Print ($"[{Name}] {label} BREAKEVEN MOVED | Signal={signalName} | Direction={direction} | Entry={entryPrice:F2} | Current={currentPrice:F2} | TriggerTicks={FixedBreakevenTriggerTicks} | OffsetTicks={FixedBreakevenOffsetTicks} | NewStop={newStopPrice:F2}");
 
+            return true;
+        }
+
+        // ============================================================
+        //  Manual trade-management buttons (MOVE SL TO BE / SL▲▼ / TP▲▼)
+        //  Drains the pending flags/tick accumulators written by the WPF
+        //  click handlers and applies the moves on the data thread. Runs
+        //  once per realtime tick from OnBarUpdate (BarsInProgress == 1),
+        //  before ManageFixedBreakeven so the manual-takeover latch takes
+        //  effect on the same tick.
+        // ============================================================
+        private void ResetManualTradeCommandState ()
+        {
+            manualStopTakeover   = false;
+            manualLastStopPrice  = 0.0;
+            manualLastTargetPrice = 0.0;
+            System.Threading.Interlocked.Exchange (ref _pendingSlNudgeTicks, 0);
+            System.Threading.Interlocked.Exchange (ref _pendingTpNudgeTicks, 0);
+            _pendingMoveSlToBe = false;
+        }
+
+        private void DiscardPendingManualCommands (string reason)
+        {
+            System.Threading.Interlocked.Exchange (ref _pendingSlNudgeTicks, 0);
+            System.Threading.Interlocked.Exchange (ref _pendingTpNudgeTicks, 0);
+            _pendingMoveSlToBe = false;
+            Print ($"[{Name}] MANUAL COMMAND DISCARDED | {reason}");
+        }
+
+        private void ProcessManualTradeCommands ()
+        {
+            // Fast exit — the common case is nothing pending.
+            if (!_pendingMoveSlToBe && _pendingSlNudgeTicks == 0 && _pendingTpNudgeTicks == 0)
+                return;
+
+            if (State != State.Realtime)
+            {
+                DiscardPendingManualCommands ("not realtime");
+                return;
+            }
+
+            // Atomic drain — clears the accumulators so concurrent clicks after this
+            // point roll into the next tick rather than being lost.
+            int  slTicks = System.Threading.Interlocked.Exchange (ref _pendingSlNudgeTicks, 0);
+            int  tpTicks = System.Threading.Interlocked.Exchange (ref _pendingTpNudgeTicks, 0);
+            bool doBe    = _pendingMoveSlToBe;
+            _pendingMoveSlToBe = false;
+
+            if (!doBe && slTicks == 0 && tpTicks == 0)
+                return;
+
+            // BE and an SL nudge in the same drain window are ambiguous — BE wins,
+            // the SL nudge is dropped. TP nudges still apply.
+            if (doBe && slTicks != 0)
+            {
+                Print ($"[{Name}] MANUAL BE takes precedence | dropped SL nudge of {slTicks} ticks");
+                slTicks = 0;
+            }
+
+            double market = GetFixedBreakevenCurrentPrice ();
+            if (market <= 0)
+            {
+                DiscardPendingManualCommands ("no current price");
+                return;
+            }
+
+            if (OrderMode == OrderManagementMode.FixedTicks)
+                ApplyManualCommandsFixed (doBe, slTicks, tpTicks, market);
+            else
+                ApplyManualCommandsAtm (doBe, slTicks, tpTicks, market);
+        }
+
+        // True if a stop price sits on the correct side of the market for the given
+        // direction (long stop below, short stop above), leaving at least one tick.
+        private bool IsStopSideValid (MarketPosition dir, double stop, double market)
+        {
+            return dir == MarketPosition.Long
+                ? stop <= market - TickSize
+                : stop >= market + TickSize;
+        }
+
+        private bool IsTargetSideValid (MarketPosition dir, double target, double market)
+        {
+            return dir == MarketPosition.Long
+                ? target >= market + TickSize
+                : target <= market - TickSize;
+        }
+
+        private void ApplyManualCommandsFixed (bool doBe, int slTicks, int tpTicks, double market)
+        {
+            // Resolve the live FixedTicks bracket. Primary and martingale are never
+            // open simultaneously in this strategy.
+            string signalName;
+            MarketPosition dir;
+            double entry;
+            bool beMoved;
+
+            if (fixedMartingalePositionConfirmed && fixedMartingaleDirection != MarketPosition.Flat)
+            {
+                signalName = fixedMartingaleSignalName;
+                dir        = fixedMartingaleDirection;
+                entry      = fixedMartingaleEntryAvgPrice;
+                beMoved    = fixedMartingaleBreakevenMoved;
+            }
+            else if (fixedPositionConfirmed && fixedEntryDirection != MarketPosition.Flat)
+            {
+                signalName = fixedEntrySignalName;
+                dir        = fixedEntryDirection;
+                entry      = fixedEntryAvgPrice;
+                beMoved    = fixedBreakevenMoved;
+            }
+            else
+            {
+                DiscardPendingManualCommands ("no live FixedTicks position");
+                return;
+            }
+
+            if (string.IsNullOrEmpty (signalName) || entry <= 0 || Position.MarketPosition != dir)
+            {
+                DiscardPendingManualCommands ("FixedTicks position not confirmed on strategy");
+                return;
+            }
+
+            // ── Stop move (BE or nudge) ──
+            if (doBe || slTicks != 0)
+            {
+                double newStop;
+                if (doBe)
+                {
+                    newStop = dir == MarketPosition.Long
+                        ? entry + (ManualBeOffsetTicks * TickSize)
+                        : entry - (ManualBeOffsetTicks * TickSize);
+                }
+                else
+                {
+                    double stopBase = manualLastStopPrice > 0
+                        ? manualLastStopPrice
+                        : (beMoved
+                            ? (dir == MarketPosition.Long ? entry + (FixedBreakevenOffsetTicks * TickSize)
+                                                          : entry - (FixedBreakevenOffsetTicks * TickSize))
+                            : (dir == MarketPosition.Long ? entry - (FixedStopLossTicks * TickSize)
+                                                          : entry + (FixedStopLossTicks * TickSize)));
+                    newStop = stopBase + (slTicks * TickSize);
+                }
+
+                newStop = Instrument.MasterInstrument.RoundToTickSize (newStop);
+
+                if (!IsStopSideValid (dir, newStop, market))
+                {
+                    Print ($"[{Name}] MANUAL {(doBe ? "BE" : "SL")} SKIPPED | wrong side | new={newStop:F2} market={market:F2} dir={dir}");
+                }
+                else
+                {
+                    SetStopLoss (signalName, CalculationMode.Price, newStop, false);
+                    manualLastStopPrice = newStop;
+                    manualStopTakeover  = true;
+                    Print ($"[{Name}] MANUAL {(doBe ? "BE" : "SL")} | Signal={signalName} dir={dir} newStop={newStop:F2} market={market:F2}");
+                }
+            }
+
+            // ── Target nudge ──
+            if (tpTicks != 0)
+            {
+                double tgtBase = manualLastTargetPrice > 0
+                    ? manualLastTargetPrice
+                    : (dir == MarketPosition.Long ? entry + (FixedProfitTargetTicks * TickSize)
+                                                  : entry - (FixedProfitTargetTicks * TickSize));
+                double newTgt = Instrument.MasterInstrument.RoundToTickSize (tgtBase + (tpTicks * TickSize));
+
+                if (!IsTargetSideValid (dir, newTgt, market))
+                {
+                    Print ($"[{Name}] MANUAL TP SKIPPED | wrong side | new={newTgt:F2} market={market:F2} dir={dir}");
+                }
+                else
+                {
+                    SetProfitTarget (signalName, CalculationMode.Price, newTgt);
+                    manualLastTargetPrice = newTgt;
+                    Print ($"[{Name}] MANUAL TP | Signal={signalName} dir={dir} newTgt={newTgt:F2} market={market:F2}");
+                }
+            }
+        }
+
+        private void ApplyManualCommandsAtm (bool doBe, int slTicks, int tpTicks, double market)
+        {
+            // Resolve the live ATM (primary or martingale — never both).
+            string atmId = (martingaleRecoveryActive && !string.IsNullOrEmpty (martingaleAtmStrategyId))
+                ? martingaleAtmStrategyId
+                : atmStrategyId;
+
+            if (string.IsNullOrEmpty (atmId))
+            {
+                DiscardPendingManualCommands ("no ATM id");
+                return;
+            }
+
+            if (atmId == atmStrategyId && !isAtmStrategyCreated)
+            {
+                DiscardPendingManualCommands ("ATM not yet confirmed");
+                return;
+            }
+            if (atmId == martingaleAtmStrategyId && !martingaleAtmStrategyCreated)
+            {
+                DiscardPendingManualCommands ("martingale ATM not yet confirmed");
+                return;
+            }
+
+            if (_openAtmTrade == null)
+            {
+                DiscardPendingManualCommands ("no confirmed ATM position");
+                return;
+            }
+
+            MarketPosition atmPos = MarketPosition.Flat;
+            try { atmPos = GetAtmStrategyMarketPositionTickCached (atmId); } catch { }
+            if (atmPos == MarketPosition.Flat)
+            {
+                DiscardPendingManualCommands ("ATM flat");
+                return;
+            }
+
+            MarketPosition dir = _openAtmTrade.Direction;
+            double entry = _openAtmTrade.EntryPrice;
+            if (entry <= 0)
+            {
+                double avg;
+                if (TryGetAtmAveragePriceSafe (atmId, "Manual", out avg))
+                    entry = avg;
+            }
+
+            // Discover this ATM's live bracket orders.
+            List<Order> stops   = new List<Order> ();
+            List<Order> targets = new List<Order> ();
+            CollectAtmBracketOrders (atmId, stops, targets);
+
+            if (stops.Count == 0 && targets.Count == 0)
+            {
+                Print ($"[{Name}] MANUAL MOVE SKIPPED | no live ATM bracket orders found | ATM={atmId}");
+                return;
+            }
+
+            // ── Stops (BE or nudge) — move ALL stops together ──
+            if (doBe || slTicks != 0)
+            {
+                if (doBe && entry <= 0)
+                {
+                    Print ($"[{Name}] MANUAL BE SKIPPED | ATM entry price unknown | ATM={atmId}");
+                }
+                else
+                {
+                    foreach (Order o in stops)
+                    {
+                        double baseStop = o.StopPrice;
+                        if (baseStop <= 0)
+                        {
+                            Print ($"[{Name}] MANUAL SL SKIPPED | bad stop price on {o.Name} | ATM={atmId}");
+                            continue;
+                        }
+
+                        double newStop = doBe
+                            ? (dir == MarketPosition.Long ? entry + (ManualBeOffsetTicks * TickSize)
+                                                          : entry - (ManualBeOffsetTicks * TickSize))
+                            : baseStop + (slTicks * TickSize);
+                        newStop = Instrument.MasterInstrument.RoundToTickSize (newStop);
+
+                        if (!IsStopSideValid (dir, newStop, market))
+                        {
+                            Print ($"[{Name}] MANUAL {(doBe ? "BE" : "SL")} SKIPPED | wrong side | {o.Name} new={newStop:F2} market={market:F2} dir={dir}");
+                            continue;
+                        }
+
+                        try
+                        {
+                            bool ok = AtmStrategyChangeStopTarget (0, newStop, o.Name, atmId);
+                            if (!ok)
+                                Print ($"[{Name}] MANUAL {(doBe ? "BE" : "SL")} | change returned false (order gone/trailed?) | {o.Name} ATM={atmId}");
+                            else
+                                Print ($"[{Name}] MANUAL {(doBe ? "BE" : "SL")} | {o.Name} newStop={newStop:F2} market={market:F2} dir={dir}");
+                        }
+                        catch (Exception ex)
+                        {
+                            if (EnableDebug || IsMissingAtmIdError (ex))
+                                Print ($"[{Name}] MANUAL {(doBe ? "BE" : "SL")} FAILED | {o.Name} ATM={atmId} | {ex.Message}");
+                        }
+                    }
+                    manualStopTakeover = true;
+                }
+            }
+
+            // ── Targets (nudge) — move ALL targets together ──
+            if (tpTicks != 0)
+            {
+                foreach (Order o in targets)
+                {
+                    double baseTgt = o.LimitPrice;
+                    if (baseTgt <= 0)
+                    {
+                        Print ($"[{Name}] MANUAL TP SKIPPED | bad target price on {o.Name} | ATM={atmId}");
+                        continue;
+                    }
+
+                    double newTgt = Instrument.MasterInstrument.RoundToTickSize (baseTgt + (tpTicks * TickSize));
+
+                    if (!IsTargetSideValid (dir, newTgt, market))
+                    {
+                        Print ($"[{Name}] MANUAL TP SKIPPED | wrong side | {o.Name} new={newTgt:F2} market={market:F2} dir={dir}");
+                        continue;
+                    }
+
+                    try
+                    {
+                        bool ok = AtmStrategyChangeStopTarget (newTgt, 0, o.Name, atmId);
+                        if (!ok)
+                            Print ($"[{Name}] MANUAL TP | change returned false (order gone?) | {o.Name} ATM={atmId}");
+                        else
+                            Print ($"[{Name}] MANUAL TP | {o.Name} newTgt={newTgt:F2} market={market:F2} dir={dir}");
+                    }
+                    catch (Exception ex)
+                    {
+                        if (EnableDebug || IsMissingAtmIdError (ex))
+                            Print ($"[{Name}] MANUAL TP FAILED | {o.Name} ATM={atmId} | {ex.Message}");
+                    }
+                }
+            }
+        }
+
+        // Collects this ATM's live Stop<N>/Target<N> orders. Names are confirmed to
+        // belong to atmId via GetAtmStrategyStopTargetOrderStatus. Note: if a second
+        // ATM with identically-named brackets is live on the same instrument+account,
+        // the public API cannot discriminate — an accepted, documented limitation.
+        private void CollectAtmBracketOrders (string atmId, List<Order> stops, List<Order> targets)
+        {
+            if (Account == null || string.IsNullOrEmpty (atmId))
+                return;
+
+            List<Order> snap = new List<Order> ();
+            lock (Account.Orders)
+            {
+                foreach (Order o in Account.Orders)
+                {
+                    if (o == null || o.Instrument != Instrument)
+                        continue;
+                    if (o.OrderState == OrderState.Working || o.OrderState == OrderState.Accepted)
+                        snap.Add (o);
+                }
+            }
+
+            foreach (Order o in snap)
+            {
+                bool isStop   = NameHasPrefixAndDigit (o.Name, "Stop");
+                bool isTarget = NameHasPrefixAndDigit (o.Name, "Target");
+                if (!isStop && !isTarget)
+                    continue;
+
+                // Confirm the name belongs to our ATM.
+                bool belongs = false;
+                try
+                {
+                    string[,] st = GetAtmStrategyStopTargetOrderStatus (o.Name, atmId);
+                    belongs = st != null && st.GetLength (0) > 0;
+                }
+                catch (Exception ex)
+                {
+                    if (IsMissingAtmIdError (ex))
+                        belongs = false;
+                }
+
+                if (!belongs)
+                    continue;
+
+                if (isStop)
+                    stops.Add (o);
+                else
+                    targets.Add (o);
+            }
+        }
+
+        // Case-insensitive test for a name like "Stop1"/"Target2": prefix followed by
+        // one or more digits and nothing else.
+        private static bool NameHasPrefixAndDigit (string name, string prefix)
+        {
+            if (string.IsNullOrEmpty (name) || name.Length <= prefix.Length)
+                return false;
+            if (!name.StartsWith (prefix, StringComparison.OrdinalIgnoreCase))
+                return false;
+            for (int i = prefix.Length; i < name.Length; i++)
+                if (!char.IsDigit (name[i]))
+                    return false;
             return true;
         }
 
@@ -5727,6 +6145,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             fixedMartingalePositionConfirmed = false;
             fixedMartingaleCloseProcessed = false;
             fixedMartingaleBreakevenMoved = false;
+            ResetManualTradeCommandState ();   // fresh martingale trade — clear manual latch
 
             _tradeMap[fixedMartingaleSignalName] = new TradeRecord
             {
@@ -5987,6 +6406,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             atmStrategyId = GetAtmStrategyUniqueId ();
             orderId = GetAtmStrategyUniqueId ();
             _atmIdsSetUtc = DateTime.UtcNow;   // defense #3: start registration-timeout clock
+            ResetManualTradeCommandState ();   // fresh trade — clear manual latch / tracked prices
 
             _tradeMap[atmStrategyId] = new TradeRecord
             {
@@ -6422,6 +6842,8 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             fixedMartingaleEntryQty = 0;
             fixedMartingalePositionConfirmed = false;
             fixedMartingaleCloseProcessed = false;
+
+            ResetManualTradeCommandState ();
         }
 
         private void SubmitMartingaleRecoveryEntry (MarketPosition direction)
@@ -6479,6 +6901,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             martingaleAtmStrategyId = GetAtmStrategyUniqueId ();
             martingaleOrderId = GetAtmStrategyUniqueId ();
             _martingaleIdsSetUtc = DateTime.UtcNow;   // defense #3: start registration-timeout clock
+            ResetManualTradeCommandState ();   // fresh martingale trade — clear manual latch
 
             Print ($"[{Name}] MARTINGALE ATM SUBMIT | Direction={direction} | Template={MartingaleAtmStrategy}");
 
@@ -7578,23 +8001,30 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     var bInactBtn    = new SolidColorBrush (Color.FromRgb (0x1E, 0x1E, 0x30));
                     var bInactBdr    = new SolidColorBrush (Color.FromRgb (0x3A, 0x3A, 0x50));
 
-                    _armLongBtn = MakeControlPanelButton ("ARM LONG", 30, bInactBtn, bInactBdr);
-                    _armLongBtn.Width  = 148;
+                    // AUTO / LONG / SHORT toggles share one row (3 × 96 + 4 margin = 300).
+                    _autoArmBtn = MakeControlPanelButton ("AUTO: OFF", 30, bInactBtn, bInactBdr);
+                    _autoArmBtn.Width  = 96;
+                    _autoArmBtn.Margin = new Thickness (2);
+                    _autoArmBtn.Click += AutoArmBtn_Click;
+
+                    _armLongBtn = MakeControlPanelButton ("LONG: OFF", 30, bInactBtn, bInactBdr);
+                    _armLongBtn.Width  = 96;
                     _armLongBtn.Margin = new Thickness (2);
                     _armLongBtn.Click += ArmLongBtn_Click;
 
-                    _armShortBtn = MakeControlPanelButton ("ARM SHORT", 30, bInactBtn, bInactBdr);
-                    _armShortBtn.Width  = 148;
+                    _armShortBtn = MakeControlPanelButton ("SHORT: OFF", 30, bInactBtn, bInactBdr);
+                    _armShortBtn.Width  = 96;
                     _armShortBtn.Margin = new Thickness (2);
                     _armShortBtn.Click += ArmShortBtn_Click;
 
-                    var btnRow = new StackPanel
+                    var toggleRow = new StackPanel
                     {
                         Orientation         = Orientation.Horizontal,
                         HorizontalAlignment = HorizontalAlignment.Center
                     };
-                    btnRow.Children.Add (_armLongBtn);
-                    btnRow.Children.Add (_armShortBtn);
+                    toggleRow.Children.Add (_autoArmBtn);
+                    toggleRow.Children.Add (_armLongBtn);
+                    toggleRow.Children.Add (_armShortBtn);
 
                     _revBtn = MakeControlPanelButton ("REV: ON", 30,
                         new SolidColorBrush (Color.FromRgb (0x30, 0x20, 0x10)),
@@ -7603,10 +8033,46 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     _revBtn.Margin = new Thickness (2, 4, 2, 0);
                     _revBtn.Click += RevBtn_Click;
 
-                    _autoArmBtn = MakeControlPanelButton ("AUTO ARM: OFF", 30, bInactBtn, bInactBdr);
-                    _autoArmBtn.Width  = 300;
-                    _autoArmBtn.Margin = new Thickness (2, 4, 2, 0);
-                    _autoArmBtn.Click += AutoArmBtn_Click;
+                    // ── Manual trade-management buttons (optional) ────────
+                    StackPanel nudgeRow = null;
+                    if (ShowManualTradeButtons)
+                    {
+                        _moveSlBeBtn = MakeControlPanelButton ("MOVE SL TO BE", 30,
+                            new SolidColorBrush (Color.FromRgb (0x30, 0x20, 0x10)),
+                            new SolidColorBrush (Color.FromRgb (0xC8, 0x90, 0x20)));
+                        _moveSlBeBtn.Width   = 300;
+                        _moveSlBeBtn.Margin  = new Thickness (2, 4, 2, 0);
+                        _moveSlBeBtn.IsEnabled = false;
+                        _moveSlBeBtn.Opacity   = 0.5;
+                        _moveSlBeBtn.Click += MoveSlBeBtn_Click;
+
+                        // SL pair red, TP pair green. ▲ raises price, ▼ lowers — same for L/S.
+                        _slDownBtn = MakeControlPanelButton ("SL ▼", 30, bShortArmed, bShortBdr);
+                        _slUpBtn   = MakeControlPanelButton ("SL ▲", 30, bShortArmed, bShortBdr);
+                        _tpDownBtn = MakeControlPanelButton ("TP ▼", 30, bLongArmed,  bLongBdr);
+                        _tpUpBtn   = MakeControlPanelButton ("TP ▲", 30, bLongArmed,  bLongBdr);
+                        foreach (var nb in new[] { _slDownBtn, _slUpBtn, _tpDownBtn, _tpUpBtn })
+                        {
+                            nb.Width     = 71;
+                            nb.Margin    = new Thickness (2);
+                            nb.IsEnabled = false;
+                            nb.Opacity   = 0.5;
+                        }
+                        _slDownBtn.Click += SlDownBtn_Click;
+                        _slUpBtn.Click   += SlUpBtn_Click;
+                        _tpDownBtn.Click += TpDownBtn_Click;
+                        _tpUpBtn.Click   += TpUpBtn_Click;
+
+                        nudgeRow = new StackPanel
+                        {
+                            Orientation         = Orientation.Horizontal,
+                            HorizontalAlignment = HorizontalAlignment.Center
+                        };
+                        nudgeRow.Children.Add (_slDownBtn);
+                        nudgeRow.Children.Add (_slUpBtn);
+                        nudgeRow.Children.Add (_tpDownBtn);
+                        nudgeRow.Children.Add (_tpUpBtn);
+                    }
 
                     _closeBtn = MakeControlPanelButton ("CLOSE ALL", 30,
                         bShortArmed, bShortBdr);
@@ -7621,9 +8087,12 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     _panelBody.Children.Add (_panelAccountLabel);
                     _panelBody.Children.Add (_statusLabel);
                     _panelBody.Children.Add (separator);
-                    _panelBody.Children.Add (btnRow);
+                    _panelBody.Children.Add (toggleRow);
                     _panelBody.Children.Add (_revBtn);
-                    _panelBody.Children.Add (_autoArmBtn);
+                    if (_moveSlBeBtn != null)
+                        _panelBody.Children.Add (_moveSlBeBtn);
+                    if (nudgeRow != null)
+                        _panelBody.Children.Add (nudgeRow);
                     _panelBody.Children.Add (_closeBtn);
 
                     var main = new StackPanel { Orientation = Orientation.Vertical };
@@ -7671,6 +8140,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             var btn = new System.Windows.Controls.Button
             {
                 Height           = height,
+                MinWidth         = 0,   // defeat NT8's default Button MinWidth so small (< ~75px) widths are honored
                 Cursor           = System.Windows.Input.Cursors.Hand,
                 FocusVisualStyle = null,
                 Padding          = new Thickness (0),
@@ -7809,6 +8279,37 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                             _closeBtn.Click -= CloseBtn_Click;
                     }
                     catch { }
+                    // Defense #5: unsubscribe the manual trade-management buttons too.
+                    try
+                    {
+                        if (_moveSlBeBtn != null)
+                            _moveSlBeBtn.Click -= MoveSlBeBtn_Click;
+                    }
+                    catch { }
+                    try
+                    {
+                        if (_slDownBtn != null)
+                            _slDownBtn.Click -= SlDownBtn_Click;
+                    }
+                    catch { }
+                    try
+                    {
+                        if (_slUpBtn != null)
+                            _slUpBtn.Click -= SlUpBtn_Click;
+                    }
+                    catch { }
+                    try
+                    {
+                        if (_tpDownBtn != null)
+                            _tpDownBtn.Click -= TpDownBtn_Click;
+                    }
+                    catch { }
+                    try
+                    {
+                        if (_tpUpBtn != null)
+                            _tpUpBtn.Click -= TpUpBtn_Click;
+                    }
+                    catch { }
 
                     if (_controlPanel != null && UserControlCollection.Contains (_controlPanel))
                         UserControlCollection.Remove (_controlPanel);
@@ -7824,8 +8325,20 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     _revBtn              = null;
                     _autoArmBtn          = null;
                     _closeBtn            = null;
+                    _moveSlBeBtn         = null;
+                    _slDownBtn           = null;
+                    _slUpBtn             = null;
+                    _tpDownBtn           = null;
+                    _tpUpBtn             = null;
                     _controlPanel        = null;
                     _uiInitialized       = false;
+
+                    // Clear any pending manual commands so a disable/re-enable cycle
+                    // (NT8 reuses the C# instance) cannot replay a stale click.
+                    System.Threading.Interlocked.Exchange (ref _pendingSlNudgeTicks, 0);
+                    System.Threading.Interlocked.Exchange (ref _pendingTpNudgeTicks, 0);
+                    _pendingMoveSlToBe   = false;
+                    _manualButtonsActive = false;
                 }
                 catch { }
             });
@@ -7882,6 +8395,34 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         {
             FlattenEverything ("Manual CLOSE ALL button");
             UpdateRBroStatusUI ();
+        }
+
+        // Manual trade-management button handlers. These run on the WPF UI thread and
+        // MUST NOT touch order APIs — they only set pending flags / accumulate ticks.
+        // ProcessManualTradeCommands() on the data thread drains them and does the work.
+        private void MoveSlBeBtn_Click (object sender, RoutedEventArgs e)
+        {
+            _pendingMoveSlToBe = true;
+        }
+
+        private void SlUpBtn_Click (object sender, RoutedEventArgs e)
+        {
+            System.Threading.Interlocked.Add (ref _pendingSlNudgeTicks,  Math.Max (1, ManualNudgeTicks));
+        }
+
+        private void SlDownBtn_Click (object sender, RoutedEventArgs e)
+        {
+            System.Threading.Interlocked.Add (ref _pendingSlNudgeTicks, -Math.Max (1, ManualNudgeTicks));
+        }
+
+        private void TpUpBtn_Click (object sender, RoutedEventArgs e)
+        {
+            System.Threading.Interlocked.Add (ref _pendingTpNudgeTicks,  Math.Max (1, ManualNudgeTicks));
+        }
+
+        private void TpDownBtn_Click (object sender, RoutedEventArgs e)
+        {
+            System.Threading.Interlocked.Add (ref _pendingTpNudgeTicks, -Math.Max (1, ManualNudgeTicks));
         }
 
         private void OnPanelTitleMouseDown (object sender, System.Windows.Input.MouseButtonEventArgs e)
@@ -7946,12 +8487,12 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             _armLongBtn.Background  = _armLong ? new SolidColorBrush (Color.FromRgb (0x1A, 0x3A, 0x1A)) : bInact;
             _armLongBtn.BorderBrush = _armLong ? new SolidColorBrush (Color.FromRgb (0x20, 0xA0, 0x20)) : bInactBdr;
             _armLongBtn.Foreground  = _armLong ? new SolidColorBrush (Color.FromRgb (0x80, 0xFF, 0x80)) : bInactFg;
-            _armLongBtn.Content     = _armLong ? "ARMED LONG" : "ARM LONG";
+            _armLongBtn.Content     = _armLong ? "LONG: ON" : "LONG: OFF";
 
             _armShortBtn.Background  = _armShort ? new SolidColorBrush (Color.FromRgb (0x3A, 0x1A, 0x1A)) : bInact;
             _armShortBtn.BorderBrush = _armShort ? new SolidColorBrush (Color.FromRgb (0xA0, 0x20, 0x20)) : bInactBdr;
             _armShortBtn.Foreground  = _armShort ? new SolidColorBrush (Color.FromRgb (0xFF, 0x80, 0x80)) : bInactFg;
-            _armShortBtn.Content     = _armShort ? "ARMED SHORT" : "ARM SHORT";
+            _armShortBtn.Content     = _armShort ? "SHORT: ON" : "SHORT: OFF";
 
             _revBtn.Background  = _reverseOnAlternateSignal ? new SolidColorBrush (Color.FromRgb (0x30, 0x20, 0x10)) : bInact;
             _revBtn.BorderBrush = _reverseOnAlternateSignal ? new SolidColorBrush (Color.FromRgb (0xC8, 0x90, 0x20)) : bInactBdr;
@@ -7961,7 +8502,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             _autoArmBtn.Background  = _autoArm ? new SolidColorBrush (Color.FromRgb (0x0E, 0x1E, 0x3A)) : bInact;
             _autoArmBtn.BorderBrush = _autoArm ? new SolidColorBrush (Color.FromRgb (0x1E, 0x50, 0x90)) : bInactBdr;
             _autoArmBtn.Foreground  = _autoArm ? new SolidColorBrush (Color.FromRgb (0x60, 0xA0, 0xFF)) : bInactFg;
-            _autoArmBtn.Content     = _autoArm ? "AUTO ARM: ON" : "AUTO ARM: OFF";
+            _autoArmBtn.Content     = _autoArm ? "AUTO: ON" : "AUTO: OFF";
         }
 
         private void UpdateRBroStatusUI ()
@@ -7994,6 +8535,16 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                             dailyLimitHit ? Brushes.Red :
                             Position.MarketPosition != MarketPosition.Flat ? Brushes.Cyan :
                             (_armLong || _armShort) ? Brushes.LimeGreen : Brushes.Orange;
+
+                    // Manual trade buttons: enabled only while a position is open.
+                    bool live = _manualButtonsActive;
+                    foreach (var b in new[] { _moveSlBeBtn, _slDownBtn, _slUpBtn, _tpDownBtn, _tpUpBtn })
+                    {
+                        if (b == null)
+                            continue;
+                        b.IsEnabled = live;
+                        b.Opacity   = live ? 1.0 : 0.5;
+                    }
                 }
                 catch { }
             });
@@ -8024,6 +8575,11 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 if (!EnableMartingaleOnStopLoss)
                     RemoveProperties (col, "MartingaleAtmStrategy");
             }
+
+            // Manual nudge/BE tick sizes apply to BOTH modes; only hide them when the
+            // manual button feature itself is turned off.
+            if (!ShowManualTradeButtons)
+                RemoveProperties (col, "ManualNudgeTicks", "ManualBeOffsetTicks");
         }
 
         private void ModifyPNLProperties (PropertyDescriptorCollection col)
@@ -8763,6 +9319,22 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         [Range (0, int.MaxValue)]
         [Display (Name = "Fixed Breakeven Offset Ticks", Order = 7, GroupName = "ATM Parameters", Description = "Offset from entry after breakeven is triggered. Long stop = entry + offset. Short stop = entry - offset.")]
         public int FixedBreakevenOffsetTicks
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Range (1, 500)]
+        [Display (Name = "Manual Nudge Ticks", Order = 8, GroupName = "ATM Parameters", Description = "Ticks each SL/TP nudge button click moves the price. Applies to both order modes. Rapid clicks accumulate into a single order change.")]
+        public int ManualNudgeTicks
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Range (-500, 500)]
+        [Display (Name = "Manual BE Offset Ticks", Order = 9, GroupName = "ATM Parameters", Description = "Signed offset for the MOVE SL TO BE button. Long stop = entry + offset ticks; short stop = entry - offset ticks. 0 = exact entry. Applies to both order modes.")]
+        public int ManualBeOffsetTicks
         {
             get; set;
         }
@@ -10654,6 +11226,15 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         [Display (Name = "Control Panel Size", Order = 9, GroupName = "Dashboard Display",
             Description = "Panel scale: Large=100%, Medium=75%, Small=50%, Minimized=title bar only. Also cycles on double-click of the title bar.")]
         public GodZillaControlPanelSize ControlPanelSize
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Display (Name = "Show Manual Trade Buttons", Order = 10, GroupName = "Dashboard Display",
+            Description = "Adds MOVE SL TO BE and SL/TP nudge buttons to the control panel for manually managing an open trade. Works in both ATM and FixedTicks order modes.")]
+        [RefreshProperties (RefreshProperties.All)]
+        public bool ShowManualTradeButtons
         {
             get; set;
         }

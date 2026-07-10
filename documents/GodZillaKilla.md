@@ -1,6 +1,6 @@
 # GodZillaKilla — ATM Trading Strategy
 
-**Version:** 1.9.4
+**Version:** 1.10.0
 **Namespace:** `NinjaTrader.NinjaScript.Strategies.Playr101`
 **Author:** Playr101
 **Credits:** GreyBeard, ninZa.co, RenkoKings, ES, rbro112
@@ -13,6 +13,7 @@ GodZillaKilla is a NinjaTrader 8 strategy that reads signals from the six GodZil
 
 | Version | Summary |
 |---|---|
+| **1.10.0** | **Manual trade-management buttons.** The control panel gains a **MOVE SL TO BE** button and a row of four nudge buttons — **SL ▼ / SL ▲ / TP ▼ / TP ▲** — for hands-on management of an open trade in **both** order modes (ATM and FixedTicks). ▲ always raises the price, ▼ always lowers it (identical for long and short). MOVE SL TO BE places the stop at entry ± the new **Manual BE Offset Ticks** property (signed, default 0; long = entry + offset, short = entry − offset). Each nudge click moves the price by the new **Manual Nudge Ticks** property (default 4); rapid clicks accumulate into a single order change. Buttons are enabled only while a position is open. **Manual takes over:** once you move the stop by hand, the automatic FixedTicks breakeven stops managing it for the rest of that trade (the latch clears on the next entry). Threading follows the safe contract — WPF handlers only set flags; the data thread drains them once per tick and issues the orders (`SetStopLoss`/`SetProfitTarget` in FixedTicks; `AtmStrategyChangeStopTarget` on the live `Stop<N>`/`Target<N>` bracket orders in ATM). All moves are tick-rounded and wrong-side-guarded (skipped with a log line rather than rejected). Multi-bracket ATM templates: all stops (and all targets) move together; BE sets every stop to the breakeven price. New **Show Manual Trade Buttons** toggle (Dashboard Display, default on) hides the buttons and the two tick properties when off. Layout change: **AUTO / LONG / SHORT** now share one row (relabeled `AUTO: ON`, `LONG: ON`, `SHORT: ON`). *ATM caveat:* the ATM template's own auto-trail/auto-BE can still move a stop after a manual move — the strategy cannot latch the template off; nudges always re-read the live order price, so they remain correct. |
 | **1.9.4** | **Startup performance controls (new, default off).** New `Historical Processing Mode` property: `FullHistoricalProcessing` (default) preserves prior behavior; `SignalWarmUpOnly` lets child indicators warm up through history while GodZilla skips its own historical management, execution, historical tick-series work, alerts, and strategy-owned historical drawings — lighter startup when running several live/Sim ATM instances at once. New **Performance / Historical** category adds `Process Historical 1-Tick Series`, `Draw Historical Signal Arrows`, `Draw Historical Background Colors`, `Draw Historical T Markers`, and `Draw Historical ATM Entry/Exit Markers` (all apply only in FullHistoricalProcessing), plus `Load Only Required Signal Engines` — skips instantiating child indicators whose signals aren't used by Set 1, an enabled Set 2, or a chart display toggle; `OnBarUpdate`'s null-guard now only requires the engines actually in use. `Show Bar Status Indicator` now defaults to off for new instances (per-chart convenience, not needed for trading). All new properties default to legacy full-processing behavior — existing charts and templates are unaffected until explicitly changed. |
 | **1.9.3** | **Performance pass (no signal/entry behavior change).** Data thread: early bail in the pending-entry tick handler, session-window times cached as ints, ATM position reads routed through the per-tick memo, and the six-signal read/normalize/write pipeline deduplicated to one compute per bar shared by visuals and entry logic. gbKingOrderBlock: reflection removed from the per-bar backup/revert path, O(1) SortedList last-element access, inactive zone lists pruned at 2×OrderBlockAge, and SharpDX brushes/gradients/text formats cached with proper RenderTarget lifecycle. gbPANAKanal: `Dictionary` → `SortedList` for line info, fixing an O(n²)-per-frame render loop. NewsSignals, gbBarStatus, and gbSuperJumpBoost also received render-thread brush/measurement caching. Only visible difference: KO inactive zones older than 2×OrderBlockAge no longer draw on far scroll-back. Full write-up in [GodZilla-1.9.3-Performance-Pass.md](GodZilla-1.9.3-Performance-Pass.md). |
 | **1.9.2** | Trade log trimmed to 11 columns — removed `SignalCombo`, `UsedSignals`, and `LastTradeLine`, which duplicated the `Trigger` column (e.g. `SET1-G3:KO+PA+SU`). Dropped the now-dead `TradeRecord` fields and per-row `Build*` computations that only fed those columns; `TradeResult` retained. No change to signals, entries, or PnL accounting. |
@@ -175,7 +176,7 @@ Size: `Tiny` / `Small` / `Normal` / `Large` / `Huge`.
 
 ## Control Panel
 
-A floating WPF panel in the "noble" dark navy style shows instrument name, account name, and the five control buttons (ARM LONG / ARM SHORT / REV / AUTO ARM / CLOSE ALL). It can be freely repositioned and resized:
+A floating WPF panel in the "noble" dark navy style shows instrument name, account name, the arm toggles (AUTO / LONG / SHORT on one row), REV, the optional manual trade-management buttons, and CLOSE ALL. It can be freely repositioned and resized:
 
 | Interaction | Effect |
 |---|---|
@@ -186,10 +187,20 @@ A floating WPF panel in the "noble" dark navy style shows instrument name, accou
 `ControlPanelLeft` / `ControlPanelTop` are saved back to the strategy properties on mouse-up, so the panel reappears in the same location after a chart reload. `ControlPanelSize` persists the last scale state.
 
 Button functions:
-- **ARM LONG / ARM SHORT** — arm or disarm each direction independently; active state shows green/red glow
-- **AUTO ARM** — master toggle; ON re-arms both directions and REV, OFF disarms all three
+- **AUTO** — master toggle; ON re-arms both directions and REV, OFF disarms all three
+- **LONG / SHORT** — arm or disarm each direction independently; active state shows green/red glow
 - **REV** — enable/disable reverse-on-opposite-signal
 - **CLOSE ALL** — flatten all positions immediately
+
+### Manual Trade-Management Buttons
+
+Shown when **Show Manual Trade Buttons** (Dashboard Display, default on) is enabled. They work in both order modes and are active only while a position is open (greyed out when flat):
+
+- **MOVE SL TO BE** — moves the stop to the entry price ± **Manual BE Offset Ticks** (signed; long = entry + offset, short = entry − offset; 0 = exact entry).
+- **SL ▼ / SL ▲** — nudge the stop price down / up by **Manual Nudge Ticks** (default 4).
+- **TP ▼ / TP ▲** — nudge the target price down / up by the same amount.
+
+▲ always raises the price and ▼ always lowers it, regardless of long/short. Rapid clicks accumulate into a single order change. Once you move the stop by hand, the automatic FixedTicks breakeven stops managing it for the rest of that trade. Moves are tick-rounded and skipped (with a log line) if they would land on the wrong side of the market. In ATM mode the buttons act on the live `Stop<N>`/`Target<N>` bracket orders — all stops (and all targets) move together, and BE sets every stop to the breakeven price. Note the ATM template's own auto-trail can still move a stop after a manual adjustment.
 
 ---
 
