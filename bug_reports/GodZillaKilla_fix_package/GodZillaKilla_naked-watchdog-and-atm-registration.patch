@@ -1,0 +1,186 @@
+--- a/GodZillaKilla.cs	(before fixes, 2026-07-29)
++++ b/GodZillaKilla.cs	(after fixes, 2026-07-29)
+@@ -246,6 +246,19 @@
+         private DateTime lastNakedCheckUtc = DateTime.MinValue;
+         private const int NakedCheckIntervalSeconds = 30;
+ 
++        // 2026-07-29 naked-watchdog false-positive fix (see log 06:50:54 / 08:37:44):
++        // (a) grace period after any fill on this instrument — ATM brackets take
++        //     ~350ms to submit after an entry fill, and OCO quantity changes put
++        //     stops into ChangeSubmitted; the watchdog fired inside those windows
++        //     and Account.Flatten disabled the strategy.
++        // (b) double-confirm — first naked sighting only arms a suspect flag and
++        //     schedules a fast re-check; flatten happens only if the position is
++        //     STILL naked on the second look.
++        private DateTime _lastFillActivityUtc = DateTime.MinValue;
++        private const int NakedGraceSeconds   = 5;
++        private bool _nakedSuspectPending     = false;
++        private const int NakedReCheckSeconds = 5;
++
+         // FixedTicks SystemPerformance sync throttle.
+         // Prevents scanning SystemPerformance.AllTrades on every BIP=1 tick.
+         private DateTime _lastFixedPerfSyncUtc = DateTime.MinValue;
+@@ -1284,6 +1297,8 @@
+                     _openAtmTrade            = null;
+                     _pendingAtmSignalTrigger = string.Empty;
+                     _templateWarningText     = string.Empty;    // clear overlay on disable
++                    _nakedSuspectPending     = false;           // watchdog double-confirm must not survive a disable/re-enable
++                    _lastFillActivityUtc     = DateTime.MinValue;
+                     ClearActiveTradeSignalSources ();
+                 }
+                 catch { }
+@@ -1648,6 +1663,10 @@
+ 
+         protected override void OnExecutionUpdate (Execution execution, string executionId, double price, int quantity, MarketPosition marketPosition, string orderId, DateTime time)
+         {
++            // Any fill on this instrument restarts the naked-watchdog grace period
++            // (brackets/OCO adjustments are typically still in flight right after).
++            _lastFillActivityUtc = DateTime.UtcNow;
++
+             if (OrderMode == OrderManagementMode.AtmStrategy)
+             {
+                 HandleAtmExecution (execution, price, quantity, marketPosition, time);
+@@ -6115,6 +6134,12 @@
+             if (string.IsNullOrEmpty (strategyId))
+                 return false;
+ 
++            // Registration-window guard: see IsAtmIdQueryable — querying NT8 before
++            // the create callback confirms the id floods the log with "does not
++            // exist" errors (NT8 logs instead of throwing, so catch never fires).
++            if (!IsAtmIdQueryable (strategyId))
++                return false;
++
+             string id = strategyId;
+ 
+             try
+@@ -6569,8 +6594,46 @@
+             _tickAtmPosCacheId = null;
+         }
+ 
++        // 2026-07-29 registration-window fix: atmStrategyId is assigned BEFORE
++        // AtmStrategyCreate (async) registers it inside NT8. Any position query in
++        // that window makes NT8 log "'GetAtmStrategyMarketPosition' method error:
++        // ATM strategy ID '...' does not exist" — at tick rate in a fast market
++        // (11 identical errors in 1ms observed at the 08:37:44 entry). NT8 does NOT
++        // throw for this, it just logs, so try/catch never sees it: the only fix is
++        // to not query until the create callback confirms registration. Time-based
++        // fallback keeps Playback safe in case the callback never fires there —
++        // after the quiet window we query regardless (worst case a few log lines,
++        // and Defense #3 still evicts a truly dead ID at 10s).
++        private const double AtmRegistrationQuietSeconds = 2.0;
++
++        private bool IsAtmIdQueryable (string strategyId)
++        {
++            if (string.IsNullOrEmpty (strategyId))
++                return false;
++
++            if (strategyId == atmStrategyId)
++                return isAtmStrategyCreated
++                    || _atmIdsSetUtc == DateTime.MinValue
++                    || (DateTime.UtcNow - _atmIdsSetUtc).TotalSeconds >= AtmRegistrationQuietSeconds;
++
++            if (strategyId == martingaleAtmStrategyId)
++                return martingaleAtmStrategyCreated
++                    || _martingaleIdsSetUtc == DateTime.MinValue
++                    || (DateTime.UtcNow - _martingaleIdsSetUtc).TotalSeconds >= AtmRegistrationQuietSeconds;
++
++            // Unknown/foreign id (e.g. _openAtmTrade.AtmId already confirmed by fill):
++            // it was necessarily registered at some point, so querying is fine.
++            return true;
++        }
++
+         private Cbi.MarketPosition GetAtmStrategyMarketPositionTickCached (string strategyId)
+         {
++            // Pre-registration window: the ATM cannot have a position before NT8 has
++            // even registered it, so Flat is the correct answer — without the query
++            // that would flood the NT8 log with "does not exist" errors.
++            if (!IsAtmIdQueryable (strategyId))
++                return Cbi.MarketPosition.Flat;
++
+             if (!string.IsNullOrEmpty (strategyId) && strategyId == _tickAtmPosCacheId)
+                 return _tickAtmPosCacheValue;
+ 
+@@ -6937,18 +7000,48 @@
+             }
+ 
+             if (positionState == MarketPosition.Flat || quantity <= 0)
++            {
++                _nakedSuspectPending = false;
+                 return;
++            }
++
++            // Grace period: right after any fill the ATM brackets / OCO replacements
++            // are typically still in flight (~350ms observed for bracket submission
++            // after an entry fill). Skip the check entirely until things settle.
++            if ((DateTime.UtcNow - _lastFillActivityUtc).TotalSeconds < NakedGraceSeconds)
++            {
++                _nakedSuspectPending = false;
++                return;
++            }
+ 
+             bool hasProtectiveOrders = HasWorkingProtectiveOrders (positionState);
+ 
+             if (!hasProtectiveOrders)
+             {
+-                Print ($"[{Name}] NAKED POSITION DETECTED at {tickTime:HH:mm:ss} | "
++                // Double-confirm: first sighting only arms the suspect flag and pulls
++                // the next check forward to NakedReCheckSeconds. Flatten only if the
++                // position is still naked on the second consecutive look.
++                if (!_nakedSuspectPending)
++                {
++                    _nakedSuspectPending = true;
++                    lastNakedCheckUtc = DateTime.UtcNow.AddSeconds (NakedReCheckSeconds - NakedCheckIntervalSeconds);
++
++                    Print ($"[{Name}] NAKED POSITION SUSPECTED at {tickTime:HH:mm:ss} | "
++                        + $"Position={positionState} {quantity} | "
++                        + $"re-checking in {NakedReCheckSeconds}s before flattening.");
++                    return;
++                }
++
++                _nakedSuspectPending = false;
++
++                Print ($"[{Name}] NAKED POSITION CONFIRMED at {tickTime:HH:mm:ss} | "
+                     + $"Position={positionState} {quantity} | "
+                     + $"HasProtectiveOrders={hasProtectiveOrders}. FLATTENING IMMEDIATELY.");
+ 
+                 FlattenNakedAccountPosition (positionState, quantity, "Naked position watchdog - no exit orders present");
+             }
++            else
++                _nakedSuspectPending = false;
+         }
+ 
+         private bool HasWorkingProtectiveOrders (MarketPosition positionState)
+@@ -6968,9 +7061,21 @@
+                         if (o.Instrument.FullName != Instrument.FullName)
+                             continue;
+ 
++                        // Transitional states count as live protection too: an OCO
++                        // quantity change puts a stop into ChangePending/ChangeSubmitted
++                        // and a partially-filled target is PartFilled — treating those
++                        // as "no protection" caused false naked-position flattens
++                        // (2026-07-29 06:50:54, Sim102). CancelPending is included
++                        // because during an OCO transition the sibling replacement is
++                        // in flight; the double-confirm re-check catches the case
++                        // where the cancel was final.
+                         if (o.OrderState != OrderState.Working
+                             && o.OrderState != OrderState.Accepted
+-                            && o.OrderState != OrderState.Submitted)
++                            && o.OrderState != OrderState.Submitted
++                            && o.OrderState != OrderState.ChangePending
++                            && o.OrderState != OrderState.ChangeSubmitted
++                            && o.OrderState != OrderState.CancelPending
++                            && o.OrderState != OrderState.PartFilled)
+                             continue;
+ 
+                         bool isExitSide =
+@@ -7093,6 +7198,10 @@
+                 if (Instrument == null || e.Execution.Instrument.FullName != Instrument.FullName)
+                     return;
+ 
++                // ATM fills arrive here (account-level hook), not via OnExecutionUpdate:
++                // stamp fill activity for the naked-watchdog grace period.
++                _lastFillActivityUtc = DateTime.UtcNow;
++
+                 _markerLastExecution = e.Execution;
+             }
+             catch { }

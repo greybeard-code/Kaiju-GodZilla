@@ -1,0 +1,14 @@
+# core.autocrlf is true in this repo. Git's binary heuristic only looks for NUL
+# bytes in the first 8000 bytes, and some files (the bug-report PDFs, for one)
+# have a long ASCII header before their first binary stream — so git classifies
+# them as text and rewrites their line endings on checkout, corrupting them.
+# Declare the binary types explicitly.
+#
+# No `text=auto` line here on purpose: source files keep the existing autocrlf
+# behaviour (CRLF in the working tree, LF in the object store) unchanged.
+
+*.pdf  binary
+*.png  binary
+*.ico  binary
+*.wav  binary
+*.xlsx binary

@@ -39,6 +39,7 @@ Kaiju/
 ├── CLAUDE.md         This file
 ├── README.md         Suite overview
 ├── documents/        Markdown reference docs only — not loaded by NT8
+├── bug_reports/      Incoming user bug reports, patches, and porting notes — reports and diffs only, source copies are gitignored
 ├── originals/        Pre-edit file snapshots kept before major changes — never load into NT8
 ├── old versions/     Historical releases for rollback reference — never load alongside current files (namespace conflicts)
 └── sound files/      WAV files for audio alerts — must be copied to NT8's sounds directory to appear in the properties picker

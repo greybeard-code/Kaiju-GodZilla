@@ -1,0 +1,15 @@
+# Full source copies that ship with incoming bug reports are not tracked — they
+# duplicate the strategy source that is already in this repo and in its history.
+# The report, patch, and notes carry the reasoning; the code lives at the root.
+#
+# Currently ignored here:
+#   GodZillaKilla_1.10.1_candidate.cs            byte-identical to /GodZillaKilla.cs at 1.10.1
+#   GodZillaKilla_fix_package/GodZillaKilla_ORIGINAL_before_fixes.cs
+#                                                byte-identical to /GodZillaKilla.cs at commit e9b0240 (1.9.4)
+#   GodZillaKilla_fix_package/GodZillaKilla.cs   that same 1.9.4 file plus the tracked .patch
+*.cs
+
+# Earlier draft of the 29 July report, superseded by the copy in
+# GodZillaKilla_fix_package/ — that one adds the 130-entry bracket-latency
+# distribution the guard values were sized against.
+GodZillaKilla_BugReport_2026-07-29-1.pdf
