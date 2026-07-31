@@ -258,6 +258,27 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         private DateTime lastNakedCheckUtc = DateTime.MinValue;
         private const int NakedCheckIntervalSeconds = 30;
 
+        // 2026-07-29 naked-watchdog false-positive fix (see log 06:50:54 / 08:37:44):
+        // (a) grace period after order activity on this instrument — ATM brackets take
+        //     ~350ms to submit after an entry fill (644ms measured on Sim101), and OCO
+        //     quantity changes put stops into ChangeSubmitted; the watchdog fired inside
+        //     those windows and Account.Flatten disabled the strategy.
+        // (b) double-confirm — first naked sighting only arms a suspect flag and
+        //     schedules a fast re-check; flatten happens only if the position is
+        //     STILL naked on the second look.
+        // Grace/re-check durations are the NakedGraceSeconds / NakedReCheckSeconds
+        // properties (Risk Management) — bracket latency differs per broker connection,
+        // and all original measurements came from the NT8 internal simulator.
+        private DateTime _lastFillActivityUtc = DateTime.MinValue;
+        private bool _nakedSuspectPending     = false;
+
+        // 2026-07-30 Defense #8 double-confirm. Same reasoning as the naked watchdog above:
+        // the mid-trade staleness branch used to tear down all ATM state on ONE racy
+        // GetAtmStrategyMarketPosition result. MinValue = nothing suspected.
+        private DateTime _atmStaleSuspectUtc        = DateTime.MinValue;
+        private DateTime _martingaleStaleSuspectUtc = DateTime.MinValue;
+        private const double AtmStaleConfirmSeconds = 2.0;
+
         // FixedTicks SystemPerformance sync throttle.
         // Prevents scanning SystemPerformance.AllTrades on every BIP=1 tick.
         private DateTime _lastFixedPerfSyncUtc = DateTime.MinValue;
@@ -532,7 +553,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 Description = "GodZillaKilla — strategy using direct KingOrderBlock/PANAKanal/ThunderZilla/SuperJumpBoost/SumoPullback/NobleCloud child indicator signals.";
                 Name = "GodZillaKilla";
                 StrategyName = Name;
-                _strategyVersion = "1.10.0";
+                _strategyVersion = "1.10.1";
 
                 Author = "Playr101";
                 Credits = "GreyBeard, ninZa.co, RenkoKings, ES, rbro999";
@@ -592,6 +613,7 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 ShowManualTradeButtons = true;
                 ManualNudgeTicks = 4;
                 ManualBeOffsetTicks = 0;
+                AtmRegistrationQuietSeconds = 2.0;
 
                 ShowIndividualSignalStats = false;     // Default to Hidden
                 ShowGroupSignalTrackingStats = true;
@@ -695,6 +717,8 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 DailyLossLimit = 200;
                 EnableMartingaleOnStopLoss = false;
                 StartFreshOnEnable = false;
+                NakedGraceSeconds = 5;
+                NakedReCheckSeconds = 5;
 
                 // News Filter Defaults
                 EnableNewsFilter = false;
@@ -1300,6 +1324,10 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     _openAtmTrade            = null;
                     _pendingAtmSignalTrigger = string.Empty;
                     _templateWarningText     = string.Empty;    // clear overlay on disable
+                    _nakedSuspectPending     = false;           // watchdog double-confirm must not survive a disable/re-enable
+                    _lastFillActivityUtc     = DateTime.MinValue;
+                    _atmStaleSuspectUtc      = DateTime.MinValue;   // same for Defense #8's double-confirm
+                    _martingaleStaleSuspectUtc = DateTime.MinValue;
                     ClearActiveTradeSignalSources ();
                 }
                 catch { }
@@ -1665,6 +1693,10 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
         protected override void OnExecutionUpdate (Execution execution, string executionId, double price, int quantity, MarketPosition marketPosition, string orderId, DateTime time)
         {
+            // Any fill on this instrument restarts the naked-watchdog grace period
+            // (brackets/OCO adjustments are typically still in flight right after).
+            _lastFillActivityUtc = DateTime.UtcNow;
+
             if (OrderMode == OrderManagementMode.AtmStrategy)
             {
                 HandleAtmExecution (execution, price, quantity, marketPosition, time);
@@ -5639,6 +5671,15 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                 return;
             }
 
+            // A manual stop/target move puts the affected orders into
+            // ChangePending/ChangeSubmitted for a moment — and in ATM mode ALL stops (or
+            // all targets) move together, so the position can momentarily have no order
+            // in a settled state. That is exactly the window that read as "naked" before
+            // the 2026-07-29 fix. HasWorkingProtectiveOrders now accepts the transitional
+            // states, and this stamp gives the watchdog a grace period on top, so a click
+            // can never cost a session.
+            _lastFillActivityUtc = DateTime.UtcNow;
+
             if (OrderMode == OrderManagementMode.FixedTicks)
                 ApplyManualCommandsFixed (doBe, slTicks, tpTicks, market);
             else
@@ -6535,6 +6576,12 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             if (string.IsNullOrEmpty (strategyId))
                 return false;
 
+            // Registration-window guard: see IsAtmIdQueryable — querying NT8 before
+            // the create callback confirms the id floods the log with "does not
+            // exist" errors (NT8 logs instead of throwing, so catch never fires).
+            if (!IsAtmIdQueryable (strategyId))
+                return false;
+
             string id = strategyId;
 
             try
@@ -6992,8 +7039,59 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             _tickAtmPosCacheId = null;
         }
 
+        // 2026-07-29 registration-window fix: atmStrategyId is assigned BEFORE
+        // AtmStrategyCreate (async) registers it inside NT8. Any position query in
+        // that window makes NT8 log "'GetAtmStrategyMarketPosition' method error:
+        // ATM strategy ID '...' does not exist" — at tick rate in a fast market
+        // (11 identical errors in 1ms observed at the 08:37:44 entry). NT8 does NOT
+        // throw for this, it just logs, so try/catch never sees it: the only fix is
+        // to not query until the create callback confirms registration. Time-based
+        // fallback keeps Playback safe in case the callback never fires there —
+        // after the quiet window we query regardless (worst case a few log lines,
+        // and Defense #3 still evicts a truly dead ID at 10s).
+        // Quiet-window length is the AtmRegistrationQuietSeconds property (ATM Parameters).
+        private bool IsAtmIdQueryable (string strategyId)
+        {
+            if (string.IsNullOrEmpty (strategyId))
+                return false;
+
+            // A confirmed open trade proves NT8 registered this id, so it is always
+            // queryable. Required for the martingale leg: HandleAtmExecution and the
+            // poll-open path both set isAtmStrategyCreated — never
+            // martingaleAtmStrategyCreated — even when the open trade IS the martingale.
+            // Without this, a martingale fill processed before its create callback would
+            // make the branch below report "not queryable" for up to
+            // AtmRegistrationQuietSeconds while the position is open, and the two callers
+            // that read Flat as a state change would act on it: the close-detection poll
+            // (ProcessMartingaleAtmTradeClose on a live position) and IsAtmMidTradeStale
+            // (Defense #8 -> account-level flatten).
+            if (_openAtmTrade != null && strategyId == _openAtmTrade.AtmId)
+                return true;
+
+            if (strategyId == atmStrategyId)
+                return isAtmStrategyCreated
+                    || _atmIdsSetUtc == DateTime.MinValue
+                    || (DateTime.UtcNow - _atmIdsSetUtc).TotalSeconds >= AtmRegistrationQuietSeconds;
+
+            if (strategyId == martingaleAtmStrategyId)
+                return martingaleAtmStrategyCreated
+                    || _martingaleIdsSetUtc == DateTime.MinValue
+                    || (DateTime.UtcNow - _martingaleIdsSetUtc).TotalSeconds >= AtmRegistrationQuietSeconds;
+
+            // Foreign id — not one of ours and not the open trade's (e.g. an id salvaged
+            // from a log record). It was necessarily registered at some point, so
+            // querying is fine.
+            return true;
+        }
+
         private Cbi.MarketPosition GetAtmStrategyMarketPositionTickCached (string strategyId)
         {
+            // Pre-registration window: the ATM cannot have a position before NT8 has
+            // even registered it, so Flat is the correct answer — without the query
+            // that would flood the NT8 log with "does not exist" errors.
+            if (!IsAtmIdQueryable (strategyId))
+                return Cbi.MarketPosition.Flat;
+
             if (!string.IsNullOrEmpty (strategyId) && strategyId == _tickAtmPosCacheId)
                 return _tickAtmPosCacheValue;
 
@@ -7011,6 +7109,16 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         {
             DateTime nowUtc = DateTime.UtcNow;
 
+            // Defense #8's double-confirm clock is only meaningful while a normal
+            // (non-martingale) ATM trade is open. Clear it otherwise, so a timestamp left
+            // over from a previous trade cannot let the next first sighting confirm
+            // instantly and defeat the re-check.
+            if (string.IsNullOrEmpty (atmStrategyId) || _openAtmTrade == null || _openAtmTrade.IsMartingale)
+                _atmStaleSuspectUtc = DateTime.MinValue;
+
+            if (string.IsNullOrEmpty (martingaleAtmStrategyId) || _openAtmTrade == null || !_openAtmTrade.IsMartingale)
+                _martingaleStaleSuspectUtc = DateTime.MinValue;
+
             // --- Normal ATM ID ---
             if (!string.IsNullOrEmpty (atmStrategyId))
             {
@@ -7018,6 +7126,17 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     !isAtmStrategyCreated
                     && _atmIdsSetUtc != DateTime.MinValue
                     && (nowUtc - _atmIdsSetUtc).TotalSeconds > ATM_REGISTRATION_TIMEOUT_SEC;
+
+                // Evaluated once: the result also has to clear the suspect clock when the
+                // ATM recovers, which an if/else-if chain alone would never reach.
+                bool midTradeStale =
+                    !registrationTimedOut
+                    && _openAtmTrade != null
+                    && !_openAtmTrade.IsMartingale
+                    && IsAtmMidTradeStale (atmStrategyId);
+
+                if (!midTradeStale)
+                    _atmStaleSuspectUtc = DateTime.MinValue;
 
                 if (registrationTimedOut)
                 {
@@ -7032,32 +7151,65 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     _atmIdsSetUtc = DateTime.MinValue;
                     ClearActiveTradeSignalSources ();
                 }
-                else if (_openAtmTrade != null && !_openAtmTrade.IsMartingale && IsAtmMidTradeStale (atmStrategyId))
+                else if (midTradeStale)
                 {
-                    // Defense #8: NT8 lost the ATM ID for an actively-trading position.
-                    // FlattenEverything submits ExitLong/Short + Account.Cancel which
-                    // both work independently of the dead ATM ID.
-                    Print ($"[{Name}] MID-TRADE ATM STALENESS DETECTED — "
-                        + $"atmId={atmStrategyId} was confirmed valid (position was open), "
-                        + $"NT8 now reports Flat while Account still holds position. "
-                        + $"Likely HDS bounce. Triggering Account-level recovery.");
+                    // Defense #8: NT8 reports Flat for an ATM id while the account still
+                    // holds the position — normally an HDS bounce that lost the id.
+                    //
+                    // 2026-07-30: double-confirm, same reasoning as the naked watchdog's
+                    // Bug #3. This branch used to tear down all ATM state on ONE racy
+                    // observation, and a single Playback ATM hiccup 5s after a healthy
+                    // entry (Playback101 2026-07-13 02:05:06) was enough to trigger it.
+                    // A transient miss now only arms the suspect clock.
+                    if (_atmStaleSuspectUtc == DateTime.MinValue)
+                    {
+                        _atmStaleSuspectUtc = nowUtc;
+                        Print ($"[{Name}] MID-TRADE ATM STALENESS SUSPECTED — "
+                            + $"atmId={atmStrategyId} reports Flat while Account still holds position. "
+                            + $"Re-checking for {AtmStaleConfirmSeconds:F1}s before recovering.");
+                    }
+                    else if ((nowUtc - _atmStaleSuspectUtc).TotalSeconds >= AtmStaleConfirmSeconds)
+                    {
+                        _atmStaleSuspectUtc = DateTime.MinValue;
 
-                    // Salvage trade log BEFORE clearing state.
-                    string d8SavedId    = atmStrategyId;
-                    double d8ForcedPnl  = Math.Round (dailyUnrealizedPnL, 2);
-                    if (EnableDebug)
-                        Print ($"[{Name}] DEFENSE #8 FORCED-CLOSE LOG | ATM={d8SavedId} | EstPnL={d8ForcedPnl:F2}");
-                    WriteTradeLogRecord (d8SavedId, nowUtc, d8ForcedPnl);
-                    _tradeMap.TryRemove (d8SavedId, out _);
+                        Print ($"[{Name}] MID-TRADE ATM STALENESS CONFIRMED — "
+                            + $"atmId={atmStrategyId} was confirmed valid (position was open), "
+                            + $"NT8 still reports Flat while Account still holds position. "
+                            + $"Likely HDS bounce. Triggering Account-level recovery.");
 
-                    FlattenEverything ("Defense #8: mid-trade ATM ID went stale (HDS bounce recovery)");
-                    _openAtmTrade         = null;
-                    atmStrategyId         = string.Empty;
-                    orderId               = string.Empty;
-                    isAtmStrategyCreated  = false;
-                    _atmPositionConfirmed = false;
-                    _atmIdsSetUtc         = DateTime.MinValue;
-                    ClearActiveTradeSignalSources ();
+                        // Salvage trade log BEFORE clearing state.
+                        string d8SavedId    = atmStrategyId;
+                        double d8ForcedPnl  = Math.Round (dailyUnrealizedPnL, 2);
+                        if (EnableDebug)
+                            Print ($"[{Name}] DEFENSE #8 FORCED-CLOSE LOG | ATM={d8SavedId} | EstPnL={d8ForcedPnl:F2}");
+                        WriteTradeLogRecord (d8SavedId, nowUtc, d8ForcedPnl);
+                        _tradeMap.TryRemove (d8SavedId, out _);
+
+                        // Account-level flatten, NOT FlattenEverything. In ATM mode
+                        // FlattenEverything cannot close this position: AtmStrategyClose is a
+                        // no-op on the very id NT8 has lost, and its ExitLong/ExitShort are
+                        // gated on Position.MarketPosition, which is Flat because the position
+                        // is ATM-managed rather than strategy-managed. All it did was
+                        // Account.Cancel the brackets — stripping the protection off a
+                        // position it left open, which is how the 2026-07-13 02:05:06 run
+                        // manufactured a naked Long 4 that the watchdog had to clean up 20s
+                        // later. FlattenNakedAccountPosition closes it for real.
+                        //
+                        // This does disable the strategy (NT8 disables NinjaScript strategies
+                        // on any account flatten). That was already the end state — the naked
+                        // watchdog got there eventually — but now it happens immediately and
+                        // without the unprotected window in between.
+                        FlattenNakedAccountPosition (_openAtmTrade.Direction, _openAtmTrade.Quantity,
+                            "Defense #8: mid-trade ATM ID went stale (HDS bounce recovery)");
+
+                        _openAtmTrade         = null;
+                        atmStrategyId         = string.Empty;
+                        orderId               = string.Empty;
+                        isAtmStrategyCreated  = false;
+                        _atmPositionConfirmed = false;
+                        _atmIdsSetUtc         = DateTime.MinValue;
+                        ClearActiveTradeSignalSources ();
+                    }
                 }
                 else if (isAtmStrategyCreated && !_atmPositionConfirmed
                     && (_atmIdsSetUtc == DateTime.MinValue
@@ -7090,6 +7242,17 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     && _martingaleIdsSetUtc != DateTime.MinValue
                     && (nowUtc - _martingaleIdsSetUtc).TotalSeconds > ATM_REGISTRATION_TIMEOUT_SEC;
 
+                // Same single-observation weakness as the normal leg — evaluated once so
+                // recovery can clear the suspect clock.
+                bool martingaleMidTradeStale =
+                    !martingaleRegistrationTimedOut
+                    && _openAtmTrade != null
+                    && _openAtmTrade.IsMartingale
+                    && IsAtmMidTradeStale (martingaleAtmStrategyId);
+
+                if (!martingaleMidTradeStale)
+                    _martingaleStaleSuspectUtc = DateTime.MinValue;
+
                 if (martingaleRegistrationTimedOut)
                 {
                     Print ($"[{Name}] STALE MARTINGALE ATM IDS CLEARED (registration timeout) — "
@@ -7098,22 +7261,38 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                     _tradeMap.TryRemove (martingaleAtmStrategyId, out _);
                     ResetMartingaleRecovery ();
                 }
-                else if (_openAtmTrade != null && _openAtmTrade.IsMartingale && IsAtmMidTradeStale (martingaleAtmStrategyId))
+                else if (martingaleMidTradeStale)
                 {
-                    Print ($"[{Name}] MID-TRADE MARTINGALE ATM STALENESS DETECTED — "
-                        + $"martingaleAtmId={martingaleAtmStrategyId}. Triggering Account-level recovery.");
+                    // Double-confirm + account-level close, for the same reasons as the
+                    // normal leg above.
+                    if (_martingaleStaleSuspectUtc == DateTime.MinValue)
+                    {
+                        _martingaleStaleSuspectUtc = nowUtc;
+                        Print ($"[{Name}] MID-TRADE MARTINGALE ATM STALENESS SUSPECTED — "
+                            + $"martingaleAtmId={martingaleAtmStrategyId} reports Flat while Account still holds position. "
+                            + $"Re-checking for {AtmStaleConfirmSeconds:F1}s before recovering.");
+                    }
+                    else if ((nowUtc - _martingaleStaleSuspectUtc).TotalSeconds >= AtmStaleConfirmSeconds)
+                    {
+                        _martingaleStaleSuspectUtc = DateTime.MinValue;
 
-                    // Salvage trade log BEFORE clearing state.
-                    string d8MartSavedId   = martingaleAtmStrategyId;
-                    double d8MartForcedPnl = Math.Round (dailyUnrealizedPnL, 2);
-                    if (EnableDebug)
-                        Print ($"[{Name}] DEFENSE #8 MARTINGALE FORCED-CLOSE LOG | ATM={d8MartSavedId} | EstPnL={d8MartForcedPnl:F2}");
-                    WriteTradeLogRecord (d8MartSavedId, nowUtc, d8MartForcedPnl);
+                        Print ($"[{Name}] MID-TRADE MARTINGALE ATM STALENESS CONFIRMED — "
+                            + $"martingaleAtmId={martingaleAtmStrategyId}. Triggering Account-level recovery.");
 
-                    FlattenEverything ("Defense #8: mid-trade martingale ATM ID went stale");
-                    _tradeMap.TryRemove (d8MartSavedId, out _);
-                    _openAtmTrade = null;
-                    ResetMartingaleRecovery ();
+                        // Salvage trade log BEFORE clearing state.
+                        string d8MartSavedId   = martingaleAtmStrategyId;
+                        double d8MartForcedPnl = Math.Round (dailyUnrealizedPnL, 2);
+                        if (EnableDebug)
+                            Print ($"[{Name}] DEFENSE #8 MARTINGALE FORCED-CLOSE LOG | ATM={d8MartSavedId} | EstPnL={d8MartForcedPnl:F2}");
+                        WriteTradeLogRecord (d8MartSavedId, nowUtc, d8MartForcedPnl);
+
+                        FlattenNakedAccountPosition (_openAtmTrade.Direction, _openAtmTrade.Quantity,
+                            "Defense #8: mid-trade martingale ATM ID went stale");
+
+                        _tradeMap.TryRemove (d8MartSavedId, out _);
+                        _openAtmTrade = null;
+                        ResetMartingaleRecovery ();
+                    }
                 }
             }
         }
@@ -7360,18 +7539,49 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
             }
 
             if (positionState == MarketPosition.Flat || quantity <= 0)
+            {
+                _nakedSuspectPending = false;
                 return;
+            }
+
+            // Grace period: right after any fill — or any manual stop/target move, see
+            // ProcessManualTradeCommands — the ATM brackets / OCO replacements are
+            // typically still in flight (351ms to 644ms measured for bracket submission
+            // after an entry fill). Skip the check entirely until things settle.
+            if ((DateTime.UtcNow - _lastFillActivityUtc).TotalSeconds < NakedGraceSeconds)
+            {
+                _nakedSuspectPending = false;
+                return;
+            }
 
             bool hasProtectiveOrders = HasWorkingProtectiveOrders (positionState);
 
             if (!hasProtectiveOrders)
             {
-                Print ($"[{Name}] NAKED POSITION DETECTED at {tickTime:HH:mm:ss} | "
+                // Double-confirm: first sighting only arms the suspect flag and pulls
+                // the next check forward to NakedReCheckSeconds. Flatten only if the
+                // position is still naked on the second consecutive look.
+                if (!_nakedSuspectPending)
+                {
+                    _nakedSuspectPending = true;
+                    lastNakedCheckUtc = DateTime.UtcNow.AddSeconds (NakedReCheckSeconds - NakedCheckIntervalSeconds);
+
+                    Print ($"[{Name}] NAKED POSITION SUSPECTED at {tickTime:HH:mm:ss} | "
+                        + $"Position={positionState} {quantity} | "
+                        + $"re-checking in {NakedReCheckSeconds}s before flattening.");
+                    return;
+                }
+
+                _nakedSuspectPending = false;
+
+                Print ($"[{Name}] NAKED POSITION CONFIRMED at {tickTime:HH:mm:ss} | "
                     + $"Position={positionState} {quantity} | "
                     + $"HasProtectiveOrders={hasProtectiveOrders}. FLATTENING IMMEDIATELY.");
 
                 FlattenNakedAccountPosition (positionState, quantity, "Naked position watchdog - no exit orders present");
             }
+            else
+                _nakedSuspectPending = false;
         }
 
         private bool HasWorkingProtectiveOrders (MarketPosition positionState)
@@ -7391,9 +7601,21 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
                         if (o.Instrument.FullName != Instrument.FullName)
                             continue;
 
+                        // Transitional states count as live protection too: an OCO
+                        // quantity change puts a stop into ChangePending/ChangeSubmitted
+                        // and a partially-filled target is PartFilled — treating those
+                        // as "no protection" caused false naked-position flattens
+                        // (2026-07-29 06:50:54, Sim102). CancelPending is included
+                        // because during an OCO transition the sibling replacement is
+                        // in flight; the double-confirm re-check catches the case
+                        // where the cancel was final.
                         if (o.OrderState != OrderState.Working
                             && o.OrderState != OrderState.Accepted
-                            && o.OrderState != OrderState.Submitted)
+                            && o.OrderState != OrderState.Submitted
+                            && o.OrderState != OrderState.ChangePending
+                            && o.OrderState != OrderState.ChangeSubmitted
+                            && o.OrderState != OrderState.CancelPending
+                            && o.OrderState != OrderState.PartFilled)
                             continue;
 
                         bool isExitSide =
@@ -7515,6 +7737,10 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
 
                 if (Instrument == null || e.Execution.Instrument.FullName != Instrument.FullName)
                     return;
+
+                // ATM fills arrive here (account-level hook), not via OnExecutionUpdate:
+                // stamp fill activity for the naked-watchdog grace period.
+                _lastFillActivityUtc = DateTime.UtcNow;
 
                 _markerLastExecution = e.Execution;
             }
@@ -8557,7 +8783,10 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         {
             if (OrderMode == OrderManagementMode.FixedTicks)
             {
-                RemoveProperties (col, "AtmStrategy", "MartingaleAtmStrategy", "EnableMartingaleOnStopLoss");
+                // AtmRegistrationQuietSeconds only gates GetAtmStrategy* queries, which
+                // FixedTicks mode never makes.
+                RemoveProperties (col, "AtmStrategy", "MartingaleAtmStrategy", "EnableMartingaleOnStopLoss",
+                    "AtmRegistrationQuietSeconds");
 
                 if (!EnableFixedBreakeven)
                     RemoveProperties (col, "FixedBreakevenTriggerTicks", "FixedBreakevenOffsetTicks");
@@ -9335,6 +9564,14 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         [Range (-500, 500)]
         [Display (Name = "Manual BE Offset Ticks", Order = 9, GroupName = "ATM Parameters", Description = "Signed offset for the MOVE SL TO BE button. Long stop = entry + offset ticks; short stop = entry - offset ticks. 0 = exact entry. Applies to both order modes.")]
         public int ManualBeOffsetTicks
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Range (0.1, 30.0)]
+        [Display (Name = "ATM Registration Quiet (sec)", Order = 10, GroupName = "ATM Parameters", Description = "Fallback window during which a brand-new ATM id is not queried, so NT8 does not log 'ATM strategy ID does not exist' at tick rate before AtmStrategyCreate registers it. Normally ended early by the create callback (~1ms); this value only matters where the callback never fires, e.g. Playback. Lower it if Playback entry detection looks late.")]
+        public double AtmRegistrationQuietSeconds
         {
             get; set;
         }
@@ -10465,6 +10702,22 @@ namespace NinjaTrader.NinjaScript.Strategies.Playr101
         [PropertyEditor ("NinjaTrader.Gui.Tools.StringStandardValuesEditorKey")]
         [Display (Name = "Martingale ATM Strategy", Order = 7, GroupName = "Risk Management", Description = "ATM template for the one-time opposite-direction martingale recovery entry. Visible only when Enable Martingale On StopLoss is checked.")]
         public string MartingaleAtmStrategy
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Range (1, 120)]
+        [Display (Name = "Naked Watchdog Grace (sec)", Order = 8, GroupName = "Risk Management", Description = "Seconds after any fill or manual stop/target move during which the naked-position watchdog stands down. ATM brackets are not submitted atomically with the entry — 644ms measured on the NT8 simulator, longer on a live broker connection. Raise this if the watchdog reports SUSPECTED right after entries.")]
+        public int NakedGraceSeconds
+        {
+            get; set;
+        }
+
+        [NinjaScriptProperty]
+        [Range (1, 120)]
+        [Display (Name = "Naked Watchdog Re-Check (sec)", Order = 9, GroupName = "Risk Management", Description = "Seconds between the first naked sighting (logged as SUSPECTED) and the confirming look that actually flattens (logged as CONFIRMED). A genuinely unprotected position stays exposed this much longer; the watchdog only polls every 30s regardless.")]
+        public int NakedReCheckSeconds
         {
             get; set;
         }
